@@ -1,0 +1,252 @@
+\documentclass[10pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usepackage{xcolor}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{array}
+
+% Header
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Mobile Computing and Its Applications}
+\lhead{Mini Project Proposal}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% Section formatting
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalfont\normalsize\bfseries}{\thesubsection}{1em}{}
+
+\begin{document}
+
+% -----------------------------------------------
+%  Title Block
+% -----------------------------------------------
+\begin{center}
+  {\LARGE \textbf{Lie \& Emotion Detector}} \\[6pt]
+  {\large Real-time Deception Detection via Facial Expression Analysis} \\[10pt]
+  {\normalsize Mobile Computing and Its Applications (4190.406B) --- Spring 2026} \\
+  {\normalsize Prof. Youngki Lee \quad Seoul National University} \\[6pt]
+  \rule{\linewidth}{0.4pt}
+\end{center}
+\vspace{6pt}
+
+% -----------------------------------------------
+%  1. Goal & Usage Scenario
+% -----------------------------------------------
+\section{Goal \& Usage Scenario}
+
+The goal of this project is to build a real-time mobile app that detects whether a user's
+displayed emotion is genuine, and if not, infers the underlying true emotion using camera
+input alone.
+
+\textbf{Final output:}
+\begin{itemize}[leftmargin=*, topsep=2pt, itemsep=1pt]
+  \item Is this emotion \textbf{genuine or deceptive}? (True / False)
+  \item If deceptive, what is the \textbf{true emotion}? (e.g., angry, sad, \ldots)
+\end{itemize}
+
+\textbf{Usage scenarios:} interview practice, negotiation, social skills training, or
+simply checking whether your friend is really fine.
+
+% -----------------------------------------------
+%  2. Related Works
+% -----------------------------------------------
+\section{Related Works}
+
+\textbf{Micro-expression recognition.}
+CASME II~\cite{yan2014casme2} and SAMM~\cite{davison2018samm} are widely used benchmarks
+for spontaneous micro-expression detection, where subtle involuntary expressions reveal
+concealed emotions.
+
+\textbf{Deception detection.}
+The MU3D dataset~\cite{lloyd2019mu3d} contains videos of genuine and deceptive facial
+expressions across multiple emotion categories, making it well suited as a
+supervised signal for deception classification.
+
+\textbf{Semi-supervised learning.}
+FixMatch~\cite{sohn2020fixmatch} achieves strong performance with few labeled examples
+by assigning pseudo-labels to unlabeled data based on a confidence threshold.
+SimCLR~\cite{chen2020simclr} learns transferable visual representations via
+contrastive learning without labels.
+
+\textbf{Lightweight on-device inference.}
+MediaPipe Face Mesh~\cite{lugaresi2019mediapipe} extracts 468 3-D facial landmarks
+in real time on mobile devices, enabling lightweight coordinate-based DNN inputs
+instead of raw image inputs.
+
+% -----------------------------------------------
+%  3. Key Idea
+% -----------------------------------------------
+\section{Key Idea}
+
+\subsection{Pipeline Overview}
+
+The system is composed of three models, summarized as $A + B \rightarrow C$:
+
+\begin{center}
+\small
+\begin{tabular}{cl}
+\toprule
+\textbf{Model} & \textbf{Role} \\
+\midrule
+$A$ & Facial expression $\rightarrow$ Emotion (7 classes) \\
+$B$ & Genuine vs.\ deceptive classification \\
+$C$ & Fusion: true emotion given deception signal \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{4pt}
+MediaPipe Face Mesh extracts 468 landmark coordinates per frame. These coordinates
+(not raw pixels) serve as inputs to Models $A$ and $B$, making both models extremely
+lightweight and quantization-friendly.
+
+\subsection{Semi-Supervised Learning with FixMatch}
+
+A key challenge is the limited availability of labeled deception data.
+We address this with the following four-stage pipeline:
+
+\begin{enumerate}[leftmargin=*, topsep=2pt, itemsep=2pt]
+  \item \textbf{Contrastive pre-training (SimCLR).}
+        Train a feature extractor on \emph{both} labeled (Dataset $B$: self-collected)
+        and unlabeled data (Dataset $A$: MU3D used without labels) via
+        contrastive loss. This produces a shared facial-feature embedding space.
+
+  \item \textbf{Supervised fine-tuning.}
+        Attach a classifier head and train only on Dataset $B$ (labeled),
+        using the frozen SimCLR backbone.
+
+  \item \textbf{Pseudo-labeling (FixMatch).}
+        Apply the fine-tuned model to Dataset $A$. Retain pseudo-labels only
+        where prediction confidence exceeds threshold $\tau = 0.95$.
+
+  \item \textbf{Joint re-training.}
+        Combine pseudo-labeled $A$ with labeled $B$ and retrain the full
+        Model $B$ end-to-end.
+\end{enumerate}
+
+This allows us to exploit the large unlabeled MU3D corpus to improve deception
+detection without requiring manual annotation.
+
+% -----------------------------------------------
+%  4. Implementation Plan
+% -----------------------------------------------
+\section{Implementation Plan}
+
+\subsection{Datasets}
+
+\begin{itemize}[leftmargin=*, topsep=2pt, itemsep=1pt]
+  \item \textbf{AffectNet}: 450k images, 7 emotion classes $\rightarrow$ Model $A$
+  \item \textbf{MU3D}: genuine/deceptive expression videos $\rightarrow$ unlabeled pool for FixMatch
+  \item \textbf{Self-collected}: minimum 20 subjects; genuine vs.\ posed smiles (5 s clips),
+        controlled lighting/distance $\rightarrow$ labeled set for Model $B$
+\end{itemize}
+
+\subsection{Model Architecture}
+
+All three models use \textbf{MobileNetV2} backbones fine-tuned on landmark coordinate
+sequences. Model $C$ is a lightweight MLP that takes the concatenated output logits
+of $A$ and $B$ as input.
+
+\subsection{Model Optimization}
+
+Models will be converted to TFLite with \textbf{INT8 post-training quantization}.
+Because inputs are low-dimensional landmark coordinates rather than images,
+accuracy degradation is expected to be $<2\%$ while achieving $\sim75\%$
+size reduction --- maximizing the scoring criteria for size reduction rate vs.\
+accuracy drop.
+
+\subsection{Android App}
+
+\begin{itemize}[leftmargin=*, topsep=2pt, itemsep=1pt]
+  \item Real-time camera feed with MediaPipe Face Mesh overlay
+  \item Live emotion gauge (surface emotion vs.\ inferred true emotion)
+  \item Deception probability bar; red border alert on high probability
+  \item Post-session summary heatmap of expression timeline
+\end{itemize}
+
+% -----------------------------------------------
+%  5. Project Timeline
+% -----------------------------------------------
+\section{Project Timeline}
+
+\begin{center}
+\small
+\begin{tabular}{>{\bfseries}p{2.0cm} p{4.8cm}}
+\toprule
+Period & Task \\
+\midrule
+$\sim$May 4   & Proposal submission; environment setup; dataset download \\
+May 5--11      & SimCLR pre-training; Model A \& B initial training \\
+May 12--18     & Self-data collection; FixMatch pseudo-labeling; Model C fusion \\
+May 19--25     & TFLite INT8 quantization; accuracy/size benchmarking \\
+May 26--Jun 1  & Android app + visualization; GitHub cleanup; final APK \\
+Jun 2--4       & Final presentation \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection*{Team Role Division}
+
+\begin{center}
+\small
+\begin{tabular}{p{3.5cm} p{3.5cm}}
+\toprule
+\textbf{Member A} & \textbf{Member B} \\
+\midrule
+Model training (Python) & Android app development \\
+SimCLR + FixMatch & MediaPipe integration \\
+TFLite quantization & UI \& visualization \\
+\multicolumn{2}{c}{Self-data collection (joint)} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% -----------------------------------------------
+%  References
+% -----------------------------------------------
+\bibliographystyle{plain}
+\begin{thebibliography}{9}
+
+\bibitem{yan2014casme2}
+W.~Yan et al.,
+``CASME II: An Improved Spontaneous Micro-Expression Database,''
+\textit{PLOS ONE}, 2014.
+
+\bibitem{davison2018samm}
+A.~K. Davison et al.,
+``SAMM: A Spontaneous Micro-Facial Movement Dataset,''
+\textit{IEEE T-AFFC}, 2018.
+
+\bibitem{lloyd2019mu3d}
+E.~P. Lloyd et al.,
+``The MU3D: A Multi-Emotion, Multi-Intensity, 3D Face Database,''
+\textit{PLOS ONE}, 2019.
+
+\bibitem{sohn2020fixmatch}
+K.~Sohn et al.,
+``FixMatch: Simplifying Semi-Supervised Learning with Consistency and Confidence,''
+\textit{NeurIPS}, 2020.
+
+\bibitem{chen2020simclr}
+T.~Chen et al.,
+``A Simple Framework for Contrastive Learning of Visual Representations,''
+\textit{ICML}, 2020.
+
+\bibitem{lugaresi2019mediapipe}
+C.~Lugaresi et al.,
+``MediaPipe: A Framework for Building Perception Pipelines,''
+\textit{arXiv:1906.08172}, 2019.
+
+\end{thebibliography}
+
+\end{document}
