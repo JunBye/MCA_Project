@@ -1,7 +1,11 @@
 package com.example.mca_project.ui.interview
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,7 +33,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.mca_project.ui.components.AppHeader
-import com.example.mca_project.ui.components.CameraView
+import com.example.mca_project.ui.components.CameraXPreview
 import com.example.mca_project.ui.components.CardMeta
 import com.example.mca_project.ui.components.ChecklistRow
 import com.example.mca_project.ui.components.Divider
@@ -47,15 +51,39 @@ import com.example.mca_project.ui.components.Spinner
 import com.example.mca_project.ui.components.WarningBanner
 import com.example.mca_project.ui.theme.EdTheme
 import com.example.mca_project.ui.theme.EdType
-import kotlinx.coroutines.delay
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 
 /** 3-1 Setup */
 @Composable
 fun InterviewSetupScreen(onStart: () -> Unit) {
     val c = EdTheme.colors
-    var granted by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { delay(480); granted = true } // TODO(permission): 실제 권한 요청
-    Screen(footer = { EdButton("Start", onStart, icon = "activity", enabled = granted) }) {
+    val context = LocalContext.current
+    val permissions = remember {
+        listOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO,
+        )
+    }
+    fun isGranted(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+
+    var permissionMap by remember { mutableStateOf(permissions.associateWith(::isGranted)) }
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        permissionMap = permissions.associateWith { permission ->
+            result[permission] ?: isGranted(permission)
+        }
+    }
+    val allGranted = permissionMap.values.all { it }
+
+    LaunchedEffect(Unit) {
+        permissionMap = permissions.associateWith(::isGranted)
+        if (!allGranted) launcher.launch(permissions.toTypedArray())
+    }
+
+    Screen(footer = { EdButton("Start", onStart, icon = "activity", enabled = allGranted) }) {
         AppHeader("Job Interview", step = "Setup · real-time")
         Text(
             "We'll read voice, facial expression and heart-rate (PPG) continuously while you talk.",
@@ -64,9 +92,13 @@ fun InterviewSetupScreen(onStart: () -> Unit) {
         SectionLabel("Permissions required")
         EdCard {
             Column {
-                ChecklistRow("camera", "Camera (rear)", "Reads facial micro-expressions", granted) {}
+                ChecklistRow("camera", "Camera (rear)", "Reads facial micro-expressions", permissionMap[Manifest.permission.CAMERA] == true) {
+                    launcher.launch(permissions.toTypedArray())
+                }
                 Divider()
-                ChecklistRow("mic", "Microphone", "Reads voice tremor & prosody", granted) {}
+                ChecklistRow("mic", "Microphone", "Reads voice tremor & prosody", permissionMap[Manifest.permission.RECORD_AUDIO] == true) {
+                    launcher.launch(permissions.toTypedArray())
+                }
             }
         }
         Spacer(Modifier.size(16.dp))
@@ -94,15 +126,7 @@ fun InterviewMeasuringScreen(
 ) {
     val c = EdTheme.colors
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var warming by remember { mutableStateOf(true) }
-    var dismissed by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { viewModel.startMeasuring() }
-    LaunchedEffect(Unit) { delay(3600); warming = false }
-
-    // 모델 미연동: state.notReadyMessage 가 있으면 항상 Not ready
-    val notReady = state.notReadyMessage != null
-    val showWarn = notReady && (warming && !dismissed || !warming)
-    val warnText = if (warming) "Not ready! — loading models…" else "Not ready! — model not connected"
 
     val dec = state.fakeProbability * 100f
     val mismatch = (state.faceVoiceDiscordance ?: 0f) * 100f
@@ -117,15 +141,19 @@ fun InterviewMeasuringScreen(
             Text("Job Interview", color = c.textFaint, fontFamily = EdType.mono, fontSize = 12.5.sp)
         }
 
-        WarningBanner(show = showWarn, text = warnText, onDismiss = if (warming) ({ dismissed = true }) else null)
+        WarningBanner(show = state.notReadyMessage != null, text = state.notReadyMessage ?: "")
 
         // 카메라 프리뷰
-        CameraView(ratio = 4f / 3f) {
+        CameraXPreview(
+            analysisExecutor = viewModel.analysisExecutor,
+            lensFacing = CameraSelector.LENS_FACING_BACK,
+            onFrame = viewModel::onCameraFrame,
+        ) {
             Box(Modifier.align(Alignment.BottomStart).padding(10.dp).clip(RoundedCornerShape(7.dp)).background(c.bg.copy(alpha = 0.6f)).padding(horizontal = 9.dp, vertical = 4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     EdIcon("face", size = 13, tint = c.primary)
                     Spacer(Modifier.width(7.dp))
-                    Text("tracking face · ${(state.emotionConfidence * 100).toInt()}%", color = c.primary, fontFamily = EdType.mono, fontSize = 11.sp)
+                    Text("tracking face · ${(state.trackingConfidence * 100).toInt()}%", color = c.primary, fontFamily = EdType.mono, fontSize = 11.sp)
                 }
             }
         }
@@ -151,7 +179,7 @@ fun InterviewMeasuringScreen(
                         Text("dominant facial read", color = c.textFaint, fontFamily = EdType.sans, fontSize = 12.sp)
                     }
                     Column(horizontalAlignment = Alignment.End) {
-                        Text(state.currentEmotion?.label ?: "—", color = c.text, fontFamily = EdType.sans, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                        Text(state.currentEmotion ?: "—", color = c.text, fontFamily = EdType.sans, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                         Text("${(state.emotionConfidence * 100).toInt()}% conf", color = c.textFaint, fontFamily = EdType.mono, fontSize = 11.5.sp)
                     }
                 }

@@ -28,6 +28,8 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.mca_project.ui.components.HeartBeat
 import com.example.mca_project.ui.components.Screen
 import com.example.mca_project.ui.components.Spinner
@@ -36,12 +38,18 @@ import com.example.mca_project.ui.theme.EdType
 import kotlinx.coroutines.delay
 
 @Composable
-fun SplashScreen(onReady: () -> Unit) {
+fun SplashScreen(
+    onReady: () -> Unit,
+    viewModel: SplashViewModel = hiltViewModel(),
+) {
     val c = EdTheme.colors
-    LaunchedEffect(Unit) {
-        // TODO(model): ModelManager.loadModels() 비동기 로드 대기
-        delay(2200)
-        onReady()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(state.isLoading, state.errorMessage) {
+        if (!state.isLoading) {
+            delay(if (state.errorMessage == null) 250 else 1200)
+            onReady()
+        }
     }
     Screen(center = true) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -68,9 +76,16 @@ fun SplashScreen(onReady: () -> Unit) {
             Text("ON-DEVICE · VOICE · FACE · PPG", color = c.textFaint, fontFamily = EdType.mono, fontSize = 13.sp, modifier = Modifier.padding(top = 7.dp))
             Spacer(Modifier.size(40.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Spinner(size = 18, color = c.primary)
+                if (state.isLoading) {
+                    Spinner(size = 18, color = c.primary)
+                }
                 Spacer(Modifier.width(10.dp))
-                Text("Loading models…", color = c.textDim, fontFamily = EdType.sans, fontSize = 13.5.sp)
+                Text(
+                    state.errorMessage ?: if (state.isLoading) "Loading models…" else "Models ready",
+                    color = if (state.errorMessage == null) c.textDim else c.warn,
+                    fontFamily = EdType.sans,
+                    fontSize = 13.5.sp,
+                )
             }
         }
     }

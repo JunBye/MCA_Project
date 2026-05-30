@@ -1,0 +1,122 @@
+{
+  "quantization": "float16",
+  "artifacts": [
+    {
+      "artifact_name": "model_1_emotion",
+      "source_checkpoint": "outputs/model_1_tf_v2/best_model.keras",
+      "tflite_path": "outputs/mobile_tflite/model_1_emotion_float16.tflite",
+      "inputs": [
+        {
+          "name": "mel",
+          "shape": [
+            null,
+            128,
+            96,
+            1
+          ],
+          "dtype": "float32"
+        },
+        {
+          "name": "ppg_features",
+          "shape": [
+            null,
+            16
+          ],
+          "dtype": "float32"
+        },
+        {
+          "name": "ppg_signal",
+          "shape": [
+            null,
+            256,
+            1
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "emotion",
+          "shape": [
+            null,
+            8
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "normalization_path": "outputs/mobile_tflite/model_1_ppg_normalization.npz"
+    },
+    {
+      "artifact_name": "model_1_veracity",
+      "source_checkpoint": "outputs/model_1_tf_v2/best_model.keras",
+      "tflite_path": "outputs/mobile_tflite/model_1_veracity_float16.tflite",
+      "inputs": [
+        {
+          "name": "mel",
+          "shape": [
+            null,
+            128,
+            96,
+            1
+          ],
+          "dtype": "float32"
+        },
+        {
+          "name": "ppg_features",
+          "shape": [
+            null,
+            16
+          ],
+          "dtype": "float32"
+        },
+        {
+          "name": "ppg_signal",
+          "shape": [
+            null,
+            256,
+            1
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "veracity",
+          "shape": [
+            null,
+            2
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "normalization_path": "outputs/mobile_tflite/model_1_ppg_normalization.npz"
+    },
+    {
+      "artifact_name": "model_2_face_emotion",
+      "source_checkpoint": "outputs/model_2_reg/best_model.keras",
+      "tflite_path": "outputs/mobile_tflite/model_2_face_emotion_float16.tflite",
+      "inputs": [
+        {
+          "name": "image",
+          "shape": [
+            null,
+            96,
+            96,
+            3
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "emotion",
+          "shape": [
+            null,
+            8
+          ],
+          "dtype": "float32"
+        }
+      ]
+    }
+  ]
+}

@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.mca_project.domain.model.Emotion
+import com.example.mca_project.domain.model.EmotionCatalog
 import com.example.mca_project.domain.model.Mode
 import com.example.mca_project.ui.components.AppHeader
 import com.example.mca_project.ui.components.EdBtn
@@ -107,10 +107,13 @@ fun ResultScreen(
             Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
                 s.results.forEach { r ->
                     val fake = r.inference.fakeProbability > 0.5f
+                    val top2 = r.inference.topEmotions.joinToString(" / ") {
+                        "${it.label} ${(it.probability * 100).toInt()}%"
+                    }
                     ResultCard(
                         index = "${r.segmentIndex}", title = "Segment ${r.segmentIndex}",
                         fake = fake, confidence = ((if (fake) r.inference.fakeProbability else 1 - r.inference.fakeProbability) * 100).toInt(),
-                        emotion = r.inference.emotion.label,
+                        emotion = top2.ifBlank { r.inference.emotion },
                     )
                 }
             }
@@ -118,7 +121,7 @@ fun ResultScreen(
     }
 }
 
-private val HEATMAP_EMOTIONS = Emotion.entries.map { it.label }
+private val HEATMAP_EMOTIONS = EmotionCatalog.heatmap
 
 /** 감정 타임라인 히트맵 placeholder (모델 미연동: 빈 그리드) */
 @Composable

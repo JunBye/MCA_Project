@@ -1,7 +1,11 @@
 package com.example.mca_project.ui.blinddate
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,12 +28,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.mca_project.ui.components.AppHeader
-import com.example.mca_project.ui.components.CameraView
+import com.example.mca_project.ui.components.CameraXPreview
 import com.example.mca_project.ui.components.CardMeta
 import com.example.mca_project.ui.components.ChecklistRow
 import com.example.mca_project.ui.components.ChipTone
@@ -47,15 +52,38 @@ import com.example.mca_project.ui.components.Spinner
 import com.example.mca_project.ui.interview.ProcessingBody
 import com.example.mca_project.ui.theme.EdTheme
 import com.example.mca_project.ui.theme.EdType
-import kotlinx.coroutines.delay
+import androidx.core.content.ContextCompat
 
 /** 4-1 Setup */
 @Composable
 fun BlindDateSetupScreen(onNext: () -> Unit) {
     val c = EdTheme.colors
-    var granted by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { delay(480); granted = true }
-    Screen(footer = { EdButton("Next", onNext, icon = "arrow-right", enabled = granted) }) {
+    val context = LocalContext.current
+    val permissions = remember {
+        listOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO,
+        )
+    }
+    fun isGranted(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+
+    var permissionMap by remember { mutableStateOf(permissions.associateWith(::isGranted)) }
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        permissionMap = permissions.associateWith { permission ->
+            result[permission] ?: isGranted(permission)
+        }
+    }
+    val allGranted = permissionMap.values.all { it }
+
+    LaunchedEffect(Unit) {
+        permissionMap = permissions.associateWith(::isGranted)
+        if (!allGranted) launcher.launch(permissions.toTypedArray())
+    }
+
+    Screen(footer = { EdButton("Next", onNext, icon = "arrow-right", enabled = allGranted) }) {
         AppHeader("Blind Date", step = "Setup · per-utterance")
         Text(
             "We'll lock onto their pulse through the camera, then analyze each answer they give.",
@@ -64,9 +92,13 @@ fun BlindDateSetupScreen(onNext: () -> Unit) {
         SectionLabel("Permissions required")
         EdCard {
             Column {
-                ChecklistRow("mic", "Microphone", "Captures each spoken answer", granted) {}
+                ChecklistRow("mic", "Microphone", "Captures each spoken answer", permissionMap[Manifest.permission.RECORD_AUDIO] == true) {
+                    launcher.launch(permissions.toTypedArray())
+                }
                 Divider()
-                ChecklistRow("camera", "Camera (rear + flash)", "Reads pulse via fingertip PPG", granted) {}
+                ChecklistRow("camera", "Camera (rear + flash)", "Reads pulse via fingertip PPG", permissionMap[Manifest.permission.CAMERA] == true) {
+                    launcher.launch(permissions.toTypedArray())
+                }
             }
         }
         Spacer(Modifier.size(16.dp))
@@ -86,6 +118,7 @@ fun BlindDatePpgLockScreen(viewModel: BlindDateViewModel, onNext: () -> Unit) {
     val c = EdTheme.colors
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val locked = state.ppgLocked
+    LaunchedEffect(Unit) { viewModel.resetPpgLock() }
     Screen(footer = { EdButton("Next", onNext, icon = "arrow-right", enabled = locked) }) {
         AppHeader("Pulse lock", step = "Blind Date · PPG", onBack = null)
         Text(
@@ -94,7 +127,15 @@ fun BlindDatePpgLockScreen(viewModel: BlindDateViewModel, onNext: () -> Unit) {
             modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp).padding(bottom = 30.dp),
         )
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            CameraView(round = true, glow = true, ringColor = if (locked) c.genuine else c.primaryDim, flash = true) {
+            CameraXPreview(
+                analysisExecutor = viewModel.analysisExecutor,
+                lensFacing = CameraSelector.LENS_FACING_BACK,
+                torchEnabled = true,
+                round = true,
+                glow = true,
+                ringColor = if (locked) c.genuine else c.primaryDim,
+                onFrame = viewModel::onPpgFrame,
+            ) {
                 if (locked) HeartBeat(bpm = 72, size = 56, color = c.genuine)
                 else EdIcon("fingerprint", size = 64, tint = c.textFaint)
             }
@@ -116,7 +157,7 @@ fun BlindDatePpgLockScreen(viewModel: BlindDateViewModel, onNext: () -> Unit) {
                     Spacer(Modifier.width(10.dp))
                     Text("Searching for pulse…", color = c.textDim, fontFamily = EdType.mono, fontSize = 14.sp)
                     Spacer(Modifier.width(14.dp))
-                    EdButton("Lock (stub)", { viewModel.lockPpg() }, variant = EdBtn.Ghost, fillWidth = false)
+                    EdButton("Lock anyway", { viewModel.lockPpg() }, variant = EdBtn.Ghost, fillWidth = false)
                 }
             }
         }
@@ -153,9 +194,9 @@ fun BlindDateCalibrationScreen(viewModel: BlindDateViewModel, onDone: () -> Unit
                 Text("“", color = c.primary.copy(alpha = 0.35f), fontFamily = EdType.sans, fontSize = 52.sp)
                 Text(CALIBRATION_QUESTIONS[index], color = c.text, fontFamily = EdType.sans, fontSize = 23.sp, fontWeight = FontWeight.SemiBold)
                 Row(Modifier.padding(top = 22.dp), verticalAlignment = Alignment.CenterVertically) {
-                    HeartBeat(bpm = 72, size = 18, color = c.genuine)
+                    HeartBeat(bpm = state.lockedBpm?.toInt() ?: 72, size = 18, color = c.genuine)
                     Spacer(Modifier.width(8.dp))
-                    Text("baseline BPM 72 · voice nominal", color = c.textFaint, fontFamily = EdType.mono, fontSize = 12.5.sp)
+                    Text("baseline BPM ${state.lockedBpm?.toInt() ?: 72} · voice nominal", color = c.textFaint, fontFamily = EdType.mono, fontSize = 12.5.sp)
                 }
             }
         }
@@ -191,6 +232,21 @@ fun BlindDateMeasuringScreen(viewModel: BlindDateViewModel, onStop: () -> Unit) 
             }
         }
 
+        Spacer(Modifier.size(14.dp))
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            CameraXPreview(
+                analysisExecutor = viewModel.analysisExecutor,
+                lensFacing = CameraSelector.LENS_FACING_BACK,
+                torchEnabled = true,
+                round = true,
+                glow = true,
+                ringColor = c.genuine,
+                onFrame = viewModel::onPpgFrame,
+            ) {
+                HeartBeat(bpm = bpm, size = 46, color = c.genuine)
+            }
+        }
+
         Spacer(Modifier.size(16.dp))
         SectionLabel("Answers analyzed · ${state.cards.size}")
         Spacer(Modifier.size(12.dp))
@@ -205,9 +261,13 @@ fun BlindDateMeasuringScreen(viewModel: BlindDateViewModel, onStop: () -> Unit) 
             Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
                 state.cards.forEach { card ->
                     val fake = card.inference.fakeProbability > 0.5f
+                    val top2 = card.inference.topEmotions.joinToString(" / ") {
+                        "${it.label} ${(it.probability * 100).toInt()}%"
+                    }
                     ResultCard(
                         index = "#${card.index}", title = "Answer #${card.index}",
                         fake = fake, confidence = ((if (fake) card.inference.fakeProbability else 1 - card.inference.fakeProbability) * 100).toInt(),
+                        emotion = top2.ifBlank { card.inference.emotion },
                         bpmDelta = card.inference.bpm?.toInt(),
                     )
                 }
