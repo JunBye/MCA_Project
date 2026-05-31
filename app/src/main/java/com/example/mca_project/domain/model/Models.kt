@@ -3,11 +3,12 @@ package com.example.mca_project.domain.model
 /** 분석 모드 (시나리오) */
 enum class Mode { INTERVIEW, BLIND_DATE }
 
-/** 모델별 라벨 공간이 달라 문자열 라벨로 관리한다. */
+/** 모델 출력 인덱스 순서: 0 angry, 1 contempt, 2 disgust, 3 fear, 4 happy, 5 neutral, 6 sad, 7 surprise */
 object EmotionCatalog {
-    val voicePpg = listOf("중립", "차분함", "행복", "슬픔", "분노", "공포", "혐오", "놀람")
-    val face = listOf("중립", "행복", "슬픔", "놀람", "공포", "혐오", "분노", "경멸")
-    val heatmap = listOf("중립", "차분함", "행복", "슬픔", "분노", "공포", "혐오", "놀람", "경멸")
+    val canonical = listOf("Angry", "Contempt", "Disgust", "Fear", "Happy", "Neutral", "Sad", "Surprise")
+    val voicePpg = canonical
+    val face = canonical
+    val heatmap = canonical
 }
 
 data class EmotionScore(

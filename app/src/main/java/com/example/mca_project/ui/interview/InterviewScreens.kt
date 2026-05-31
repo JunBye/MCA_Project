@@ -34,7 +34,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.mca_project.ui.components.AppHeader
 import com.example.mca_project.ui.components.CameraXPreview
-import com.example.mca_project.ui.components.CardMeta
 import com.example.mca_project.ui.components.ChecklistRow
 import com.example.mca_project.ui.components.Divider
 import com.example.mca_project.ui.components.EdBtn
@@ -42,9 +41,7 @@ import com.example.mca_project.ui.components.EdButton
 import com.example.mca_project.ui.components.EdCard
 import com.example.mca_project.ui.components.EdIcon
 import com.example.mca_project.ui.components.GaugeTone
-import com.example.mca_project.ui.components.HeartBeat
 import com.example.mca_project.ui.components.LabeledGauge
-import com.example.mca_project.ui.components.MetricRow
 import com.example.mca_project.ui.components.Screen
 import com.example.mca_project.ui.components.SectionLabel
 import com.example.mca_project.ui.components.Spinner
@@ -86,7 +83,7 @@ fun InterviewSetupScreen(onStart: () -> Unit) {
     Screen(footer = { EdButton("Start", onStart, icon = "activity", enabled = allGranted) }) {
         AppHeader("Job Interview", step = "Setup · real-time")
         Text(
-            "We'll read voice, facial expression and heart-rate (PPG) continuously while you talk.",
+            "We'll read voice and facial expression continuously while you talk.",
             color = c.textDim, fontFamily = EdType.sans, fontSize = 14.5.sp, modifier = Modifier.padding(horizontal = 2.dp).padding(bottom = 20.dp),
         )
         SectionLabel("Permissions required")
@@ -106,7 +103,7 @@ fun InterviewSetupScreen(onStart: () -> Unit) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
                 EdIcon("camera", size = 20, tint = c.primary)
                 Spacer(Modifier.width(12.dp))
-                Text("Place the phone so the rear camera sees the other person's face.", color = c.textDim, fontFamily = EdType.sans, fontSize = 13.5.sp)
+                Text("Place the phone so the rear camera sees the other person's face and the mic can hear clearly.", color = c.textDim, fontFamily = EdType.sans, fontSize = 13.5.sp)
             }
         }
         Spacer(Modifier.size(16.dp))
@@ -130,7 +127,6 @@ fun InterviewMeasuringScreen(
 
     val dec = state.fakeProbability * 100f
     val mismatch = (state.faceVoiceDiscordance ?: 0f) * 100f
-    val bpm = state.bpm?.toInt() ?: 0
 
     Screen(pad = 18, footer = { EdButton("Stop analysis", onStop, variant = EdBtn.Danger, icon = "square") }) {
         Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -142,6 +138,31 @@ fun InterviewMeasuringScreen(
         }
 
         WarningBanner(show = state.notReadyMessage != null, text = state.notReadyMessage ?: "")
+
+        Row(
+            Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            EdCard(modifier = Modifier.weight(1f)) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    Text("Live windows", color = c.textFaint, fontFamily = EdType.sans, fontSize = 11.5.sp)
+                    Text("${state.segmentCount}", color = c.text, fontFamily = EdType.mono, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text("5s window · 2.5s stride", color = c.textDim, fontFamily = EdType.mono, fontSize = 10.5.sp)
+                }
+            }
+            EdCard(modifier = Modifier.weight(1f)) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    Text("Elapsed", color = c.textFaint, fontFamily = EdType.sans, fontSize = 11.5.sp)
+                    Text("${state.elapsedSeconds}s", color = c.text, fontFamily = EdType.mono, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (state.segmentCount > 0) "inference running live" else "waiting for first window",
+                        color = c.textDim,
+                        fontFamily = EdType.mono,
+                        fontSize = 10.5.sp,
+                    )
+                }
+            }
+        }
 
         // 카메라 프리뷰
         CameraXPreview(
@@ -176,19 +197,13 @@ fun InterviewMeasuringScreen(
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text("Surface emotion", color = c.textDim, fontFamily = EdType.sans, fontSize = 13.5.sp, fontWeight = FontWeight.Medium)
-                        Text("dominant facial read", color = c.textFaint, fontFamily = EdType.sans, fontSize = 12.sp)
+                        Text("dominant face-model read", color = c.textFaint, fontFamily = EdType.sans, fontSize = 12.sp)
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text(state.currentEmotion ?: "—", color = c.text, fontFamily = EdType.sans, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                         Text("${(state.emotionConfidence * 100).toInt()}% conf", color = c.textFaint, fontFamily = EdType.mono, fontSize = 11.5.sp)
                     }
                 }
-                Divider()
-                MetricRow(
-                    label = "Heart rate", sub = "via facial rPPG",
-                    value = if (bpm > 0) "$bpm" else "—", unit = "BPM", big = true, accent = true,
-                    leading = { HeartBeat(bpm = if (bpm > 0) bpm else 72, size = 24, color = c.alert) },
-                )
                 Divider()
                 Box(Modifier.padding(vertical = 14.dp)) {
                     LabeledGauge("Face–Voice mismatch", mismatch, tone = if (mismatch > 45) GaugeTone.Warn else GaugeTone.Dim)
@@ -205,7 +220,7 @@ fun InterviewProcessingScreen(
     onDone: (sessionId: String) -> Unit,
 ) {
     LaunchedEffect(Unit) { viewModel.stopMeasuring(onDone) }
-    ProcessingBody(mode = "face · voice · PPG")
+    ProcessingBody(mode = "face · voice")
 }
 
 @Composable

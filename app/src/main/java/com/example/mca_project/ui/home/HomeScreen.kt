@@ -73,7 +73,7 @@ fun HomeScreen(
             ScenarioCard(
                 icon = "briefcase", title = "Job Interview",
                 subtitle = "Real-time analysis of the person across from you.",
-                meta = listOf(CardMeta("mic", "VOICE"), CardMeta("face", "FACE"), CardMeta("heart", "PPG")),
+                meta = listOf(CardMeta("mic", "VOICE"), CardMeta("face", "FACE")),
                 onClick = onInterview,
             )
             ScenarioCard(

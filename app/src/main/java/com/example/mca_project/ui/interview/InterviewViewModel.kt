@@ -10,7 +10,7 @@ import com.example.mca_project.domain.model.Mode
 import com.example.mca_project.domain.model.SegmentResult
 import com.example.mca_project.domain.model.Session
 import com.example.mca_project.di.CameraExecutor
-import com.example.mca_project.ml.FusionInput
+import com.example.mca_project.ml.InterviewInput
 import com.example.mca_project.ml.ModelManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -30,7 +30,6 @@ data class InterviewUiState(
     val currentEmotion: String? = null,
     val emotionConfidence: Float = 0f,
     val fakeProbability: Float = 0f,
-    val bpm: Float? = null,
     val faceVoiceDiscordance: Float? = null,
     val trackingConfidence: Float = 0f,
     /** 모델 미연동 안내 메시지 ("Not ready!") */
@@ -39,8 +38,7 @@ data class InterviewUiState(
 )
 
 /**
- * 시나리오 1(대면 면접, 융합 모델) ViewModel.
- * 카메라/오디오 캡처와 추론은 모델 연동 전까지 stub.
+ * 시나리오 1(Job Interview, Voice-only + Face) ViewModel.
  */
 @HiltViewModel
 class InterviewViewModel @Inject constructor(
@@ -57,20 +55,14 @@ class InterviewViewModel @Inject constructor(
     private val segments = mutableListOf<SegmentResult>()
     private var startTime = 0L
     private var measuringJob: Job? = null
+    private var tickerJob: Job? = null
     @Volatile private var latestFaceImage: FloatArray? = null
-    @Volatile private var latestPpgFeatures: FloatArray? = null
-    @Volatile private var latestPpgSignal: FloatArray? = null
-    @Volatile private var latestBpm: Float? = null
 
     fun onCameraFrame(image: ImageProxy) {
         val reading = interviewCameraProcessor.analyze(image)
         latestFaceImage = reading.faceImage
-        latestPpgFeatures = reading.ppgFeatures
-        latestPpgSignal = reading.ppgSignal
-        latestBpm = reading.bpm ?: latestBpm
         _uiState.update {
             it.copy(
-                bpm = reading.bpm ?: it.bpm,
                 trackingConfidence = reading.trackingConfidence,
             )
         }
@@ -81,9 +73,6 @@ class InterviewViewModel @Inject constructor(
         segments.clear()
         interviewCameraProcessor.reset()
         latestFaceImage = null
-        latestPpgFeatures = null
-        latestPpgSignal = null
-        latestBpm = null
         realtimeAudioEngine.start()
         startTime = System.currentTimeMillis()
         _uiState.update {
@@ -93,7 +82,6 @@ class InterviewViewModel @Inject constructor(
                 currentEmotion = null,
                 emotionConfidence = 0f,
                 fakeProbability = 0f,
-                bpm = null,
                 faceVoiceDiscordance = null,
                 trackingConfidence = 0f,
                 segmentCount = 0,
@@ -101,18 +89,25 @@ class InterviewViewModel @Inject constructor(
             )
         }
         measuringJob?.cancel()
+        tickerJob?.cancel()
+        tickerJob = viewModelScope.launch {
+            while (isActive && _uiState.value.isMeasuring) {
+                val now = System.currentTimeMillis()
+                _uiState.update { state ->
+                    state.copy(elapsedSeconds = ((now - startTime) / 1_000L).toInt())
+                }
+                delay(1_000)
+            }
+        }
         measuringJob = viewModelScope.launch {
             while (isActive && _uiState.value.isMeasuring) {
                 val faceImage = latestFaceImage
-                val ppgFeatures = latestPpgFeatures
-                val ppgSignal = latestPpgSignal
-                val bpm = latestBpm
                 val audioSnapshot = realtimeAudioEngine.latestSnapshot()
-                if (faceImage == null || ppgFeatures == null || ppgSignal == null || audioSnapshot == null) {
+                if (faceImage == null || audioSnapshot == null) {
                     _uiState.update {
                         it.copy(
                             notReadyMessage = when {
-                                faceImage == null || ppgFeatures == null || ppgSignal == null -> "Waiting for live camera frames…"
+                                faceImage == null -> "Waiting for live camera frames…"
                                 else -> "Warming up 5-second mic window…"
                             }
                         )
@@ -122,13 +117,10 @@ class InterviewViewModel @Inject constructor(
                 }
                 val nextIndex = segments.size + 1
                 runCatching {
-                    modelManager.inferFusion(
-                        FusionInput(
+                    modelManager.inferInterview(
+                        InterviewInput(
                             mel = audioSnapshot.mel,
                             faceImage = faceImage,
-                            ppgFeatures = ppgFeatures,
-                            ppgSignal = ppgSignal,
-                            bpmHint = bpm,
                         )
                     )
                 }.onSuccess { inference ->
@@ -140,7 +132,6 @@ class InterviewViewModel @Inject constructor(
                             currentEmotion = inference.emotion,
                             emotionConfidence = inference.emotionConfidence,
                             fakeProbability = inference.fakeProbability,
-                            bpm = inference.bpm,
                             faceVoiceDiscordance = inference.faceVoiceDiscordance,
                             notReadyMessage = null,
                             segmentCount = segments.size,
@@ -159,6 +150,7 @@ class InterviewViewModel @Inject constructor(
 
     fun stopMeasuring(onFinished: (sessionId: String) -> Unit) {
         measuringJob?.cancel()
+        tickerJob?.cancel()
         realtimeAudioEngine.stop()
         _uiState.update { it.copy(isMeasuring = false) }
         val sessionId = UUID.randomUUID().toString()
@@ -186,6 +178,7 @@ class InterviewViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        tickerJob?.cancel()
         realtimeAudioEngine.stop()
         super.onCleared()
     }

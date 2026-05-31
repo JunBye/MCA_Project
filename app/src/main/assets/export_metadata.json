@@ -4,7 +4,7 @@
     {
       "artifact_name": "model_1_emotion",
       "source_checkpoint": "outputs/model_1_tf_v2/best_model.keras",
-      "tflite_path": "outputs/mobile_tflite/model_1_emotion_float16.tflite",
+      "tflite_path": "app/src/main/assets/model_1_emotion_float16.tflite",
       "inputs": [
         {
           "name": "mel",
@@ -44,12 +44,12 @@
           "dtype": "float32"
         }
       ],
-      "normalization_path": "outputs/mobile_tflite/model_1_ppg_normalization.npz"
+      "normalization_path": "app/src/main/assets/model_1_ppg_normalization.npz"
     },
     {
       "artifact_name": "model_1_veracity",
       "source_checkpoint": "outputs/model_1_tf_v2/best_model.keras",
-      "tflite_path": "outputs/mobile_tflite/model_1_veracity_float16.tflite",
+      "tflite_path": "app/src/main/assets/model_1_veracity_float16.tflite",
       "inputs": [
         {
           "name": "mel",
@@ -89,12 +89,66 @@
           "dtype": "float32"
         }
       ],
-      "normalization_path": "outputs/mobile_tflite/model_1_ppg_normalization.npz"
+      "normalization_path": "app/src/main/assets/model_1_ppg_normalization.npz"
+    },
+    {
+      "artifact_name": "model_1_voice_only_emotion",
+      "source_checkpoint": "outputs/voice_only_emotion/best_model.keras",
+      "tflite_path": "app/src/main/assets/model_1_voice_only_emotion_float16.tflite",
+      "inputs": [
+        {
+          "name": "mel",
+          "shape": [
+            null,
+            128,
+            96,
+            1
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "keras_tensor_81",
+          "shape": [
+            null,
+            8
+          ],
+          "dtype": "float32"
+        }
+      ]
+    },
+    {
+      "artifact_name": "model_1_voice_only_veracity",
+      "source_checkpoint": "outputs/voice_only_veracity/best_model.keras",
+      "tflite_path": "app/src/main/assets/model_1_voice_only_veracity_float16.tflite",
+      "inputs": [
+        {
+          "name": "mel",
+          "shape": [
+            null,
+            128,
+            96,
+            1
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "keras_tensor_163",
+          "shape": [
+            null,
+            2
+          ],
+          "dtype": "float32"
+        }
+      ]
     },
     {
       "artifact_name": "model_2_face_emotion",
       "source_checkpoint": "outputs/model_2_reg/best_model.keras",
-      "tflite_path": "outputs/mobile_tflite/model_2_face_emotion_float16.tflite",
+      "tflite_path": "app/src/main/assets/model_2_face_emotion_float16.tflite",
       "inputs": [
         {
           "name": "image",

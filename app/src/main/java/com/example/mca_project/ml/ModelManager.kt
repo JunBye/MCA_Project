@@ -10,7 +10,6 @@ import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.max
@@ -28,12 +27,13 @@ data class VoicePpgInput(
     val bpmHint: Float? = null,
 )
 
-data class FusionInput(
+data class VoiceOnlyInput(
     val mel: FloatArray,
-    val ppgFeatures: FloatArray,
-    val ppgSignal: FloatArray,
+)
+
+data class InterviewInput(
+    val mel: FloatArray,
     val faceImage: FloatArray,
-    val bpmHint: Float? = null,
 )
 
 @Singleton
@@ -41,8 +41,10 @@ class ModelManager @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
 
-    private var voiceEmotionInterpreter: Interpreter? = null
-    private var voiceVeracityInterpreter: Interpreter? = null
+    private var voicePpgEmotionInterpreter: Interpreter? = null
+    private var voicePpgVeracityInterpreter: Interpreter? = null
+    private var voiceOnlyEmotionInterpreter: Interpreter? = null
+    private var voiceOnlyVeracityInterpreter: Interpreter? = null
     private var faceEmotionInterpreter: Interpreter? = null
 
     @Volatile
@@ -50,8 +52,10 @@ class ModelManager @Inject constructor(
         private set
 
     val isReady: Boolean
-        get() = voiceEmotionInterpreter != null &&
-            voiceVeracityInterpreter != null &&
+        get() = voicePpgEmotionInterpreter != null &&
+            voicePpgVeracityInterpreter != null &&
+            voiceOnlyEmotionInterpreter != null &&
+            voiceOnlyVeracityInterpreter != null &&
             faceEmotionInterpreter != null
 
     @Synchronized
@@ -73,9 +77,9 @@ class ModelManager @Inject constructor(
         ensureLoaded()
         validateVoicePpgInput(input)
 
-        val emotionScores = runVoiceEmotion(input)
+        val emotionScores = runVoicePpgEmotion(input)
         val topEmotions = toEmotionScores(emotionScores, EmotionCatalog.voicePpg)
-        val veracityScores = runVeracity(input)
+        val veracityScores = runVoicePpgVeracity(input)
         val fakeProbability = veracityScores.getOrElse(1) { 1f - veracityScores[0] }
 
         return InferenceOutput(
@@ -87,30 +91,17 @@ class ModelManager @Inject constructor(
         )
     }
 
-    fun inferFusion(input: FusionInput): InferenceOutput {
+    fun inferInterview(input: InterviewInput): InferenceOutput {
         ensureLoaded()
-        validateVoicePpgInput(
-            VoicePpgInput(
-                mel = input.mel,
-                ppgFeatures = input.ppgFeatures,
-                ppgSignal = input.ppgSignal,
-                bpmHint = input.bpmHint,
-            )
-        )
+        validateVoiceOnlyInput(VoiceOnlyInput(input.mel))
         require(input.faceImage.size == FACE_INPUT_SIZE) {
             "faceImage must have $FACE_INPUT_SIZE floats (96x96x3), got ${input.faceImage.size}"
         }
 
-        val faceScores = runFaceEmotion(input)
+        val faceScores = runFaceEmotion(input.faceImage)
         val faceTop = toEmotionScores(faceScores, EmotionCatalog.face)
-        val voiceInput = VoicePpgInput(
-            mel = input.mel,
-            ppgFeatures = input.ppgFeatures,
-            ppgSignal = input.ppgSignal,
-            bpmHint = input.bpmHint,
-        )
-        val voiceScores = runVoiceEmotion(voiceInput)
-        val veracityScores = runVeracity(voiceInput)
+        val voiceScores = runVoiceOnlyEmotion(VoiceOnlyInput(input.mel))
+        val veracityScores = runVoiceOnlyVeracity(VoiceOnlyInput(input.mel))
         val fakeProbability = veracityScores.getOrElse(1) { 1f - veracityScores[0] }
 
         return InferenceOutput(
@@ -118,10 +109,9 @@ class ModelManager @Inject constructor(
             emotionConfidence = faceTop.first().probability,
             topEmotions = faceTop.take(2),
             fakeProbability = fakeProbability.coerceIn(0f, 1f),
-            bpm = input.bpmHint ?: estimateBpm(input.ppgSignal),
             faceVoiceDiscordance = cosineDistance(
                 projectToHeatmap(faceScores, EmotionCatalog.face),
-                projectToHeatmap(voiceScores, EmotionCatalog.voicePpg),
+                projectToHeatmap(voiceScores, EmotionCatalog.canonical),
             ),
         )
     }
@@ -152,60 +142,53 @@ class ModelManager @Inject constructor(
         return inferVoicePpg(input)
     }
 
-    fun inferDemoFusion(seed: Int, baselineBpm: Float = 74f): InferenceOutput {
-        val targetBpm = baselineBpm + ((seed % 7) - 3) * 1.8f
-        val input = FusionInput(
-            mel = demoMel(seed + 37),
-            ppgFeatures = demoPpgFeatures(seed + 19, targetBpm),
-            ppgSignal = demoPpgSignal(seed + 11, targetBpm),
-            faceImage = demoFaceImage(seed),
-            bpmHint = targetBpm,
-        )
-        return inferFusion(input)
-    }
-
-    fun inferDemoFusionFromCamera(
-        seed: Int,
-        faceImage: FloatArray,
-        ppgFeatures: FloatArray,
-        ppgSignal: FloatArray,
-        bpmHint: Float?,
-    ): InferenceOutput {
-        val input = FusionInput(
-            mel = demoMel(seed + 37),
-            ppgFeatures = ppgFeatures,
-            ppgSignal = ppgSignal,
-            faceImage = faceImage,
-            bpmHint = bpmHint,
-        )
-        return inferFusion(input)
-    }
-
-    private fun runVoiceEmotion(input: VoicePpgInput): FloatArray {
+    private fun runVoicePpgEmotion(input: VoicePpgInput): FloatArray {
         val outputs = HashMap<Int, Any>(1)
         val output = Array(1) { FloatArray(EmotionCatalog.voicePpg.size) }
         outputs[0] = output
-        voiceEmotionInterpreter!!.runForMultipleInputsOutputs(
-            buildVoiceModelInputs(voiceEmotionInterpreter!!, input),
+        voicePpgEmotionInterpreter!!.runForMultipleInputsOutputs(
+            buildVoicePpgModelInputs(voicePpgEmotionInterpreter!!, input),
             outputs,
         )
         return softmax(output[0])
     }
 
-    private fun runVeracity(input: VoicePpgInput): FloatArray {
+    private fun runVoicePpgVeracity(input: VoicePpgInput): FloatArray {
         val outputs = HashMap<Int, Any>(1)
         val output = Array(1) { FloatArray(2) }
         outputs[0] = output
-        voiceVeracityInterpreter!!.runForMultipleInputsOutputs(
-            buildVoiceModelInputs(voiceVeracityInterpreter!!, input),
+        voicePpgVeracityInterpreter!!.runForMultipleInputsOutputs(
+            buildVoicePpgModelInputs(voicePpgVeracityInterpreter!!, input),
             outputs,
         )
         return softmax(output[0])
     }
 
-    private fun runFaceEmotion(input: FusionInput): FloatArray {
+    private fun runVoiceOnlyEmotion(input: VoiceOnlyInput): FloatArray {
+        val outputs = HashMap<Int, Any>(1)
+        val output = Array(1) { FloatArray(EmotionCatalog.canonical.size) }
+        outputs[0] = output
+        voiceOnlyEmotionInterpreter!!.runForMultipleInputsOutputs(
+            buildVoiceOnlyModelInputs(voiceOnlyEmotionInterpreter!!, input),
+            outputs,
+        )
+        return softmax(output[0])
+    }
+
+    private fun runVoiceOnlyVeracity(input: VoiceOnlyInput): FloatArray {
+        val outputs = HashMap<Int, Any>(1)
+        val output = Array(1) { FloatArray(2) }
+        outputs[0] = output
+        voiceOnlyVeracityInterpreter!!.runForMultipleInputsOutputs(
+            buildVoiceOnlyModelInputs(voiceOnlyVeracityInterpreter!!, input),
+            outputs,
+        )
+        return softmax(output[0])
+    }
+
+    private fun runFaceEmotion(faceImage: FloatArray): FloatArray {
         val output = Array(1) { FloatArray(EmotionCatalog.face.size) }
-        faceEmotionInterpreter!!.run(toFaceTensor(input.faceImage), output)
+        faceEmotionInterpreter!!.run(toFaceTensor(faceImage), output)
         return softmax(output[0])
     }
 
@@ -251,7 +234,7 @@ class ModelManager @Inject constructor(
         }
     }
 
-    private fun buildVoiceModelInputs(
+    private fun buildVoicePpgModelInputs(
         interpreter: Interpreter,
         input: VoicePpgInput,
     ): Array<Any> {
@@ -262,7 +245,22 @@ class ModelManager @Inject constructor(
                 tensorName.contains("mel", ignoreCase = true) -> toMelTensor(input.mel)
                 tensorName.contains("ppg_features", ignoreCase = true) -> toPpgFeatureTensor(input.ppgFeatures)
                 tensorName.contains("ppg_signal", ignoreCase = true) -> toPpgSignalTensor(input.ppgSignal)
-                else -> error("Unknown voice model input tensor: $tensorName")
+                else -> error("Unknown voice+PPG model input tensor: $tensorName")
+            }
+        }
+        return inputs
+    }
+
+    private fun buildVoiceOnlyModelInputs(
+        interpreter: Interpreter,
+        input: VoiceOnlyInput,
+    ): Array<Any> {
+        val inputs = Array<Any>(interpreter.inputTensorCount) { Unit }
+        for (inputIndex in 0 until interpreter.inputTensorCount) {
+            val tensorName = interpreter.getInputTensor(inputIndex).name()
+            inputs[inputIndex] = when {
+                tensorName.contains("mel", ignoreCase = true) -> toMelTensor(input.mel)
+                else -> error("Unknown voice-only model input tensor: $tensorName")
             }
         }
         return inputs
@@ -361,52 +359,6 @@ class ModelManager @Inject constructor(
         }
     }
 
-    private fun demoFaceImage(seed: Int): FloatArray {
-        val smile = sin(seed * 0.45f).toFloat()
-        val browTilt = cos(seed * 0.31f).toFloat()
-        val pixels = FloatArray(FACE_INPUT_SIZE)
-        for (y in 0 until FACE_SIZE) {
-            for (x in 0 until FACE_SIZE) {
-                val nx = (x / (FACE_SIZE - 1f)) * 2f - 1f
-                val ny = (y / (FACE_SIZE - 1f)) * 2f - 1f
-                val radius = nx * nx * 0.82f + ny * ny
-                val insideFace = radius <= 0.94f
-                var r = 0.06f
-                var g = 0.08f
-                var b = 0.1f
-                if (insideFace) {
-                    r = 0.72f - abs(nx) * 0.08f + (0.04f * browTilt)
-                    g = 0.58f - abs(ny) * 0.06f
-                    b = 0.46f - abs(nx * ny) * 0.05f
-                }
-
-                val leftEye = distanceSquared(nx + 0.33f, ny + 0.18f + browTilt * 0.04f)
-                val rightEye = distanceSquared(nx - 0.33f, ny + 0.18f - browTilt * 0.04f)
-                if (leftEye < 0.018f || rightEye < 0.018f) {
-                    r = 0.12f
-                    g = 0.1f
-                    b = 0.1f
-                }
-
-                val mouthCurve = 0.28f + smile * 0.12f
-                val mouthY = ny - 0.38f - (nx * nx) * mouthCurve
-                if (abs(mouthY) < 0.035f && abs(nx) < 0.38f) {
-                    r = 0.35f + max(smile, 0f) * 0.22f
-                    g = 0.1f
-                    b = 0.14f
-                }
-
-                val base = (y * FACE_SIZE + x) * 3
-                pixels[base] = r.coerceIn(0f, 1f)
-                pixels[base + 1] = g.coerceIn(0f, 1f)
-                pixels[base + 2] = b.coerceIn(0f, 1f)
-            }
-        }
-        return pixels
-    }
-
-    private fun distanceSquared(x: Float, y: Float): Float = x * x + y * y
-
     private fun validateVoicePpgInput(input: VoicePpgInput) {
         require(input.mel.size == MEL_SIZE) {
             "mel must have $MEL_SIZE floats (128x96), got ${input.mel.size}"
@@ -419,6 +371,12 @@ class ModelManager @Inject constructor(
         }
     }
 
+    private fun validateVoiceOnlyInput(input: VoiceOnlyInput) {
+        require(input.mel.size == MEL_SIZE) {
+            "mel must have $MEL_SIZE floats (128x96), got ${input.mel.size}"
+        }
+    }
+
     private fun ensureLoaded() {
         if (!isReady) {
             loadModels()
@@ -427,11 +385,17 @@ class ModelManager @Inject constructor(
     }
 
     private fun loadModelsInternal(useXnnpack: Boolean) {
-        voiceEmotionInterpreter = Interpreter(loadModelFile(VOICE_EMOTION_MODEL), interpreterOptions(useXnnpack))
-        prepareVoicePpgInterpreter(voiceEmotionInterpreter!!)
+        voicePpgEmotionInterpreter = Interpreter(loadModelFile(VOICE_PPG_EMOTION_MODEL), interpreterOptions(useXnnpack))
+        prepareVoicePpgInterpreter(voicePpgEmotionInterpreter!!)
 
-        voiceVeracityInterpreter = Interpreter(loadModelFile(VOICE_VERACITY_MODEL), interpreterOptions(useXnnpack))
-        prepareVoicePpgInterpreter(voiceVeracityInterpreter!!)
+        voicePpgVeracityInterpreter = Interpreter(loadModelFile(VOICE_PPG_VERACITY_MODEL), interpreterOptions(useXnnpack))
+        prepareVoicePpgInterpreter(voicePpgVeracityInterpreter!!)
+
+        voiceOnlyEmotionInterpreter = Interpreter(loadModelFile(VOICE_ONLY_EMOTION_MODEL), interpreterOptions(useXnnpack))
+        prepareVoiceOnlyInterpreter(voiceOnlyEmotionInterpreter!!)
+
+        voiceOnlyVeracityInterpreter = Interpreter(loadModelFile(VOICE_ONLY_VERACITY_MODEL), interpreterOptions(useXnnpack))
+        prepareVoiceOnlyInterpreter(voiceOnlyVeracityInterpreter!!)
 
         faceEmotionInterpreter = Interpreter(loadModelFile(FACE_EMOTION_MODEL), interpreterOptions(useXnnpack))
         faceEmotionInterpreter!!.resizeInput(0, intArrayOf(1, FACE_SIZE, FACE_SIZE, 3))
@@ -456,11 +420,25 @@ class ModelManager @Inject constructor(
         interpreter.allocateTensors()
     }
 
+    private fun prepareVoiceOnlyInterpreter(interpreter: Interpreter) {
+        for (inputIndex in 0 until interpreter.inputTensorCount) {
+            val tensorName = interpreter.getInputTensor(inputIndex).name()
+            if (tensorName.contains("mel", ignoreCase = true)) {
+                interpreter.resizeInput(inputIndex, intArrayOf(1, MEL_HEIGHT, MEL_WIDTH, 1))
+            }
+        }
+        interpreter.allocateTensors()
+    }
+
     private fun closeInterpreters() {
-        voiceEmotionInterpreter?.close()
-        voiceEmotionInterpreter = null
-        voiceVeracityInterpreter?.close()
-        voiceVeracityInterpreter = null
+        voicePpgEmotionInterpreter?.close()
+        voicePpgEmotionInterpreter = null
+        voicePpgVeracityInterpreter?.close()
+        voicePpgVeracityInterpreter = null
+        voiceOnlyEmotionInterpreter?.close()
+        voiceOnlyEmotionInterpreter = null
+        voiceOnlyVeracityInterpreter?.close()
+        voiceOnlyVeracityInterpreter = null
         faceEmotionInterpreter?.close()
         faceEmotionInterpreter = null
     }
@@ -485,8 +463,10 @@ class ModelManager @Inject constructor(
     }
 
     companion object {
-        private const val VOICE_EMOTION_MODEL = "model_1_emotion_float16.tflite"
-        private const val VOICE_VERACITY_MODEL = "model_1_veracity_float16.tflite"
+        private const val VOICE_PPG_EMOTION_MODEL = "model_1_emotion_float16.tflite"
+        private const val VOICE_PPG_VERACITY_MODEL = "model_1_veracity_float16.tflite"
+        private const val VOICE_ONLY_EMOTION_MODEL = "model_1_voice_only_emotion_float16.tflite"
+        private const val VOICE_ONLY_VERACITY_MODEL = "model_1_voice_only_veracity_float16.tflite"
         private const val FACE_EMOTION_MODEL = "model_2_face_emotion_float16.tflite"
 
         private const val MEL_HEIGHT = 128

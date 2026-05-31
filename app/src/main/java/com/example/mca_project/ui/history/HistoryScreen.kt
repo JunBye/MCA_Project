@@ -66,7 +66,7 @@ fun HistoryScreen(
                             Spacer(Modifier.width(14.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(if (s.mode == Mode.INTERVIEW) "Job Interview" else "Blind Date", color = c.text, fontFamily = EdType.sans, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                Text("${s.results.size} segments", color = c.textFaint, fontFamily = EdType.mono, fontSize = 12.5.sp)
+                                Text("${s.results.size} segments · ${s.dominantEmotion}", color = c.textFaint, fontFamily = EdType.mono, fontSize = 12.5.sp)
                             }
                             val avg = (s.avgFakeProbability * 100).toInt()
                             Column(horizontalAlignment = Alignment.End) {

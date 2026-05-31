@@ -10,9 +10,6 @@ import kotlin.math.sqrt
 
 data class InterviewCameraReading(
     val faceImage: FloatArray,
-    val ppgFeatures: FloatArray,
-    val ppgSignal: FloatArray,
-    val bpm: Float?,
     val trackingConfidence: Float,
 )
 
@@ -24,23 +21,12 @@ data class FingerPpgReading(
 )
 
 class InterviewCameraProcessor @Inject constructor() {
-    private val redHistory = ArrayDeque<Float>()
-
-    fun reset() {
-        redHistory.clear()
-    }
+    fun reset() = Unit
 
     fun analyze(image: ImageProxy): InterviewCameraReading {
         val faceImage = sampleFaceImage(image)
-        val cheek = averageRgb(image, 0.34f, 0.66f, 0.40f, 0.70f)
-        push(redHistory, cheek.red, HISTORY_LIMIT)
-        val signal = buildSignal(redHistory)
-        val bpm = estimateBpm(signal)
         return InterviewCameraReading(
             faceImage = faceImage,
-            ppgFeatures = buildPpgFeatures(signal, bpm),
-            ppgSignal = signal,
-            bpm = bpm,
             trackingConfidence = estimateTrackingConfidence(faceImage),
         )
     }

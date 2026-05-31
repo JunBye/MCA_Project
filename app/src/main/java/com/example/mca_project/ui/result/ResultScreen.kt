@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,6 +67,12 @@ fun ResultScreen(
 
         val fakeCount = s.results.count { it.inference.fakeProbability > 0.5f }
         val avgDec = (s.avgFakeProbability * 100).toInt()
+        val emotionCounts = s.results
+            .groupingBy { it.inference.emotion }
+            .eachCount()
+            .toList()
+            .sortedByDescending { it.second }
+        val topEmotionStats = emotionCounts.take(3)
 
         Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 0.dp).padding(bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.clip(RoundedCornerShape(100.dp)).background(c.primaryTint).padding(horizontal = 11.dp, vertical = 5.dp)) {
@@ -95,9 +102,31 @@ fun ResultScreen(
             }
         }
 
+        Spacer(Modifier.size(14.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            EdCard(modifier = Modifier.weight(1f)) {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                    Text("Dominant emotion", color = c.textFaint, fontFamily = EdType.sans, fontSize = 11.5.sp)
+                    Text(s.dominantEmotion, color = c.text, fontFamily = EdType.sans, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
+                }
+            }
+            EdCard(modifier = Modifier.weight(1f)) {
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                    Text("Emotion spread", color = c.textFaint, fontFamily = EdType.sans, fontSize = 11.5.sp)
+                    Text(
+                        if (topEmotionStats.isEmpty()) "No data" else topEmotionStats.joinToString(" · ") { "${it.first} ${it.second}" },
+                        color = c.text,
+                        fontFamily = EdType.mono,
+                        fontSize = 12.5.sp,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
+            }
+        }
+
         // 히트맵
         Spacer(Modifier.size(14.dp))
-        Heatmap(segmentCount = s.results.size.coerceAtLeast(1))
+        Heatmap(results = s.results)
 
         // 세그먼트 리스트
         SectionLabel("Per-segment breakdown", modifier = Modifier.padding(top = 22.dp, bottom = 10.dp))
@@ -123,10 +152,10 @@ fun ResultScreen(
 
 private val HEATMAP_EMOTIONS = EmotionCatalog.heatmap
 
-/** 감정 타임라인 히트맵 placeholder (모델 미연동: 빈 그리드) */
 @Composable
-private fun Heatmap(segmentCount: Int) {
+private fun Heatmap(results: List<com.example.mca_project.domain.model.SegmentResult>) {
     val c = EdTheme.colors
+    val columns = results.size.coerceAtLeast(1)
     EdCard {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -142,10 +171,18 @@ private fun Heatmap(segmentCount: Int) {
                     }
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    HEATMAP_EMOTIONS.forEach { _ ->
+                    HEATMAP_EMOTIONS.forEach { emotion ->
                         Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                            repeat(segmentCount) {
-                                Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(3.dp)).background(c.track))
+                            repeat(columns) { columnIndex ->
+                                val intensity = results.getOrNull(columnIndex)?.let { segment ->
+                                    emotionWeight(segment, emotion)
+                                } ?: 0f
+                                Box(
+                                    Modifier.weight(1f)
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(heatmapColor(intensity, c.track))
+                                )
                             }
                         }
                     }
@@ -154,11 +191,31 @@ private fun Heatmap(segmentCount: Int) {
             // 범례
             Spacer(Modifier.size(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                Legend(Color(0xA62BC79A), "Genuine")
-                Legend(Color(0xC7FF5D5D), "Deceptive")
+                Legend(heatmapColor(0.2f, c.track), "Low")
+                Legend(heatmapColor(0.55f, c.track), "Medium")
+                Legend(heatmapColor(0.95f, c.track), "High")
             }
         }
     }
+}
+
+private fun emotionWeight(
+    segment: com.example.mca_project.domain.model.SegmentResult,
+    emotion: String,
+): Float {
+    val matchedTop = segment.inference.topEmotions.firstOrNull { it.label == emotion }?.probability
+    if (matchedTop != null) return matchedTop.coerceIn(0f, 1f)
+    if (segment.inference.emotion == emotion) return segment.inference.emotionConfidence.coerceIn(0f, 1f)
+    return 0f
+}
+
+private fun heatmapColor(intensity: Float, fallback: Color): Color {
+    val clamped = intensity.coerceIn(0f, 1f)
+    return when {
+        clamped <= 0f -> fallback
+        clamped < 0.5f -> lerp(Color(0xFF1C8C68), Color(0xFFF2B544), clamped / 0.5f)
+        else -> lerp(Color(0xFFF2B544), Color(0xFFD94B4B), (clamped - 0.5f) / 0.5f)
+    }.copy(alpha = 0.92f)
 }
 
 @Composable

@@ -13,7 +13,7 @@ object Routes {
     const val SPLASH = "splash"
     const val HOME = "home"
 
-    // 시나리오 1: Job Interview (Voice + Face + PPG)
+    // 시나리오 1: Job Interview (Voice + Face)
     const val INTERVIEW_SETUP = "interview/setup"
     const val INTERVIEW_MEASURING = "interview/measuring"
     const val INTERVIEW_PROCESSING = "interview/processing"
