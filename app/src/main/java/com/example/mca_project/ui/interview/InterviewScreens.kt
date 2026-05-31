@@ -5,7 +5,9 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +29,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,6 +56,8 @@ import com.example.mca_project.ui.theme.EdTheme
 import com.example.mca_project.ui.theme.EdType
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+
+private val faceBoxColor = Color(0xFF2BC79A)
 
 /** 3-1 Setup */
 @Composable
@@ -125,6 +133,9 @@ fun InterviewMeasuringScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { viewModel.startMeasuring() }
 
+    // 디버깅용 전면/후면 전환
+    var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_BACK) }
+
     val dec = state.fakeProbability * 100f
     val mismatch = (state.faceVoiceDiscordance ?: 0f) * 100f
 
@@ -164,17 +175,58 @@ fun InterviewMeasuringScreen(
             }
         }
 
-        // 카메라 프리뷰
+        // 카메라 프리뷰 (ML Kit 비동기 검출 → manageImageClose=false)
+        val faceDetected = state.faceBox != null
         CameraXPreview(
             analysisExecutor = viewModel.analysisExecutor,
-            lensFacing = CameraSelector.LENS_FACING_BACK,
-            onFrame = viewModel::onCameraFrame,
+            lensFacing = lensFacing,
+            manageImageClose = false,
+            onFrame = { image -> viewModel.onCameraFrame(image, isFrontCamera = lensFacing == CameraSelector.LENS_FACING_FRONT) },
         ) {
+            // 디버깅용 전면/후면 전환 버튼 (우상단)
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(10.dp)
+                    .clip(RoundedCornerShape(7.dp)).background(c.bg.copy(alpha = 0.6f))
+                    .clickable {
+                        lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK)
+                            CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK
+                    }
+                    .padding(horizontal = 9.dp, vertical = 6.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    EdIcon("refresh", size = 13, tint = c.text)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        if (lensFacing == CameraSelector.LENS_FACING_BACK) "rear" else "front",
+                        color = c.text, fontFamily = EdType.mono, fontSize = 11.sp,
+                    )
+                }
+            }
+            // 검출된 얼굴 박스 오버레이
+            state.faceBox?.let { box ->
+                Canvas(Modifier.matchParentSize()) {
+                    val l = box.left * size.width
+                    val t = box.top * size.height
+                    val w = (box.right - box.left) * size.width
+                    val h = (box.bottom - box.top) * size.height
+                    drawRect(
+                        color = faceBoxColor,
+                        topLeft = Offset(l, t),
+                        size = Size(w, h),
+                        style = Stroke(width = 3.dp.toPx()),
+                    )
+                }
+            }
             Box(Modifier.align(Alignment.BottomStart).padding(10.dp).clip(RoundedCornerShape(7.dp)).background(c.bg.copy(alpha = 0.6f)).padding(horizontal = 9.dp, vertical = 4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    EdIcon("face", size = 13, tint = c.primary)
+                    EdIcon("face", size = 13, tint = if (faceDetected) c.primary else c.textFaint)
                     Spacer(Modifier.width(7.dp))
-                    Text("tracking face · ${(state.trackingConfidence * 100).toInt()}%", color = c.primary, fontFamily = EdType.mono, fontSize = 11.sp)
+                    Text(
+                        if (faceDetected) "face detected" else "searching face…",
+                        color = if (faceDetected) c.primary else c.textFaint,
+                        fontFamily = EdType.mono,
+                        fontSize = 11.sp,
+                    )
                 }
             }
         }
@@ -189,26 +241,54 @@ fun InterviewMeasuringScreen(
         Spacer(Modifier.size(12.dp))
         EdCard {
             Column(Modifier.padding(horizontal = 18.dp)) {
-                // Surface emotion
-                Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(44.dp).clip(RoundedCornerShape(13.dp)).background(c.surface2), contentAlignment = Alignment.Center) {
-                        EdIcon("face", size = 22, tint = c.primary)
-                    }
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Surface emotion", color = c.textDim, fontFamily = EdType.sans, fontSize = 13.5.sp, fontWeight = FontWeight.Medium)
-                        Text("dominant face-model read", color = c.textFaint, fontFamily = EdType.sans, fontSize = 12.sp)
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(state.currentEmotion ?: "—", color = c.text, fontFamily = EdType.sans, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                        Text("${(state.emotionConfidence * 100).toInt()}% conf", color = c.textFaint, fontFamily = EdType.mono, fontSize = 11.5.sp)
-                    }
-                }
+                // 얼굴 모델이 읽은 감정 (카메라)
+                EmotionReadRow(
+                    icon = "face",
+                    title = "Face emotion",
+                    subtitle = "from camera",
+                    emotion = state.currentEmotion,
+                    confidence = state.emotionConfidence,
+                )
+                Divider()
+                // 음성 모델이 읽은 감정 (마이크)
+                EmotionReadRow(
+                    icon = "mic",
+                    title = "Voice emotion",
+                    subtitle = "from microphone",
+                    emotion = state.voiceEmotion,
+                    confidence = state.voiceEmotionConfidence,
+                )
                 Divider()
                 Box(Modifier.padding(vertical = 14.dp)) {
                     LabeledGauge("Face–Voice mismatch", mismatch, tone = if (mismatch > 45) GaugeTone.Warn else GaugeTone.Dim)
                 }
             }
+        }
+    }
+}
+
+/** Face/Voice 감정 1줄 표시 (아이콘 · 라벨 · 감정 · confidence) */
+@Composable
+private fun EmotionReadRow(
+    icon: String,
+    title: String,
+    subtitle: String,
+    emotion: String?,
+    confidence: Float,
+) {
+    val c = EdTheme.colors
+    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(44.dp).clip(RoundedCornerShape(13.dp)).background(c.surface2), contentAlignment = Alignment.Center) {
+            EdIcon(icon, size = 22, tint = c.primary)
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = c.textDim, fontFamily = EdType.sans, fontSize = 13.5.sp, fontWeight = FontWeight.Medium)
+            Text(subtitle, color = c.textFaint, fontFamily = EdType.sans, fontSize = 12.sp)
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(emotion ?: "—", color = c.text, fontFamily = EdType.sans, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text("${(confidence * 100).toInt()}% conf", color = c.textFaint, fontFamily = EdType.mono, fontSize = 11.5.sp)
         }
     }
 }

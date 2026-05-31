@@ -29,9 +29,12 @@ data class InterviewUiState(
     val elapsedSeconds: Int = 0,
     val currentEmotion: String? = null,
     val emotionConfidence: Float = 0f,
+    val voiceEmotion: String? = null,
+    val voiceEmotionConfidence: Float = 0f,
     val fakeProbability: Float = 0f,
     val faceVoiceDiscordance: Float? = null,
     val trackingConfidence: Float = 0f,
+    val faceBox: com.example.mca_project.camera.FaceBox? = null,
     /** 모델 미연동 안내 메시지 ("Not ready!") */
     val notReadyMessage: String? = null,
     val segmentCount: Int = 0,
@@ -58,13 +61,17 @@ class InterviewViewModel @Inject constructor(
     private var tickerJob: Job? = null
     @Volatile private var latestFaceImage: FloatArray? = null
 
-    fun onCameraFrame(image: ImageProxy) {
-        val reading = interviewCameraProcessor.analyze(image)
-        latestFaceImage = reading.faceImage
-        _uiState.update {
-            it.copy(
-                trackingConfidence = reading.trackingConfidence,
-            )
+    // ML Kit 검출은 비동기 → analyze 가 image.close()까지 책임진다(CameraXPreview는 닫지 않음).
+    // isFrontCamera: 전면이면 회전 역변환·미러를 보정한다.
+    fun onCameraFrame(image: ImageProxy, isFrontCamera: Boolean = false) {
+        interviewCameraProcessor.analyze(image, isFrontCamera) { reading ->
+            latestFaceImage = reading.faceImage
+            _uiState.update {
+                it.copy(
+                    trackingConfidence = reading.trackingConfidence,
+                    faceBox = reading.faceBox,
+                )
+            }
         }
     }
 
@@ -131,6 +138,8 @@ class InterviewViewModel @Inject constructor(
                             elapsedSeconds = ((now - startTime) / 1_000L).toInt(),
                             currentEmotion = inference.emotion,
                             emotionConfidence = inference.emotionConfidence,
+                            voiceEmotion = inference.voiceEmotion,
+                            voiceEmotionConfidence = inference.voiceEmotionConfidence ?: 0f,
                             fakeProbability = inference.fakeProbability,
                             faceVoiceDiscordance = inference.faceVoiceDiscordance,
                             notReadyMessage = null,

@@ -42,6 +42,8 @@ fun CameraXPreview(
     round: Boolean = false,
     glow: Boolean = false,
     ringColor: Color? = null,
+    // false 면 onFrame 이 image.close()를 직접 책임진다(예: ML Kit 비동기 검출).
+    manageImageClose: Boolean = true,
     onFrame: (ImageProxy) -> Unit,
     overlay: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = {},
 ) {
@@ -70,10 +72,15 @@ fun CameraXPreview(
                 .build()
                 .apply {
                     setAnalyzer(analysisExecutor) { image ->
-                        try {
+                        if (manageImageClose) {
+                            try {
+                                frameHandler(image)
+                            } finally {
+                                image.close()
+                            }
+                        } else {
+                            // onFrame(또는 그 내부 비동기 처리)이 close 책임짐
                             frameHandler(image)
-                        } finally {
-                            image.close()
                         }
                     }
                 }
