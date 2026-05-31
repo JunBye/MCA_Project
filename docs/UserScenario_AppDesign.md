@@ -1,7 +1,11 @@
-익# 유저 시나리오 & 안드로이드 앱 설계 문서
+# 유저 시나리오 & 안드로이드 앱 설계 문서
 
-> 플랫폼: Android (Kotlin, Android Studio)
-> 모델: Voice+PPG (시나리오 2), Voice+Face+PPG 융합 (시나리오 1)
+> 플랫폼: Android (Kotlin, Jetpack Compose)
+> 모델(TFLite, on-device):
+> - 시나리오 1 (Job Interview): **Face emotion(model_2) + Voice-only emotion + Voice-only veracity**
+> - 시나리오 2 (Blind Date): **Voice+PPG emotion + Voice+PPG veracity** (model_1)
+>
+> _최종 업데이트: 2026-06-01 — TFLite 모델 실제 연동 + mel 전처리 학습 정합 + ML Kit 얼굴검출 반영_
 
 ---
 
@@ -9,10 +13,13 @@
 
 | 항목 | 결정 |
 | --- | --- |
-| **시나리오 1 카메라 소스** | **후면 카메라 직접 촬영** (상대 얼굴을 후면 카메라로 찍어 face landmark + PPG 동시 추출) |
-| **시나리오 2 입력** | **음성 + PPG 동시** (Voice+PPG 모델은 두 입력 모두 필수) |
-| **앱 진입 방식** | **상황 선택 버튼 2개** (Blind Date / Job Interview) |
-| **추론 구조** | 시작 → 측정 중 → 결과 → 다시 시작/홈 (다중 화면) |
+| **시나리오 1 카메라 소스** | 후면 카메라로 상대 얼굴 촬영 → **ML Kit Face Detection으로 얼굴 박스 검출 → 96×96 크롭** (PPG 미사용) |
+| **시나리오 1 모델** | 얼굴 감정(model_2) + 음성 감정/진위(voice-only). **PPG 제거됨** |
+| **시나리오 2 입력** | **음성 + PPG 동시** (model_1 Voice+PPG, 세 입력 mel/ppg_features/ppg_signal 필수) |
+| **앱 진입 방식** | 상황 선택 버튼 2개 (Blind Date / Job Interview) |
+| **추론 구조** | 시작 → 측정 중(5초 슬라이딩 윈도우 / 2.5초 stride) → 결과 → 다시 시작/홈 |
+| **mel 전처리** | 학습(`make_mel_spectrograms.py`)과 동일: n_fft=2048, hop=1024, hann, Slaney mel, `power_to_db(ref=max)`, per-window z-score. radix-2 FFT로 실시간화 |
+| **얼굴 입력 스케일** | **0~255 float32** (모델 내부 Rescaling(1/255) 보유) |
 
 ---
 
@@ -21,45 +28,52 @@
 ### 시나리오 1: Job Interview (대면 면접)
 
 **상황**: 대면 1:1 면접 / 미팅 (면접관과 마주 앉은 상황)
-**모델**: 융합 (Voice + Face + PPG)
-**추론 방식**: 슬라이딩 윈도우 실시간 (5초 단위)
-**카메라 입력**: 후면 카메라로 상대(면접관) 얼굴을 직접 촬영 → 프레임에서 face landmark + PPG(뺨 RGB) 동시 추출, 음성은 폰 마이크로 함께 캡처
+**모델**: 얼굴 감정(model_2) + 음성 감정/진위(voice-only). **PPG 미사용**
+**추론 방식**: 5초 슬라이딩 윈도우, 2.5초마다 추론
+**카메라 입력**: 후면 카메라로 상대 얼굴 촬영 → **ML Kit Face Detection으로 얼굴 bounding box 검출 → 그 영역만 96×96 크롭**. 음성은 폰 마이크로 함께 캡처(mel)
 
 **유저 플로우**:
 1. 앱 실행 → 홈에서 "Job Interview" 선택
-2. 카메라 권한 요청 → 마이크 권한 요청
+2. 카메라 + 마이크 권한 요청
 3. "후면 카메라로 상대 얼굴이 보이도록 폰을 두세요" 안내
-4. 시작 → 카메라 프리뷰 + 실시간 게이지 표시 (5초 윈도우마다 추론)
-5. 종료 → 전체 타임라인 리포트
+4. 시작 → 카메라 프리뷰(+얼굴 박스 오버레이) + 실시간 게이지 (2.5초마다 추론)
+5. 종료 → 전체 타임라인 리포트(heatmap)
 
-**왜 후면 카메라 직접 촬영인가**:
-- 대면 상황에서 상대 얼굴을 후면 카메라로 직접 찍는 것이 가장 단순하고 화질이 좋음
-- 같은 프레임에서 face landmark와 PPG(뺨 RGB 분산)를 동시에 추출
-- 음성은 폰 마이크로 함께 확보 → 융합 모델의 세 입력(Voice/Face/PPG)을 한 번에 충족
+**출력**: 얼굴 감정 + 음성 감정(둘 다 표시) + 거짓 확률 + **Face–Voice mismatch**(두 감정 분포의 코사인 거리)
+
+**얼굴 처리 (현재 구현)**:
+- `InterviewCameraProcessor`가 ML Kit으로 가장 큰 얼굴을 검출(FAST 모드, landmark/classification off)
+- 검출 박스에 18% 여백을 주고 96×96으로 크롭, **0~255 float32**로 모델 입력(모델 내부 Rescaling)
+- 검출 박스를 정규화(0~1) 좌표로 UI에 전달 → 프리뷰 위 **사각형 오버레이**
+- 얼굴 미검출 시 중앙 크롭 폴백 + tracking confidence 0 ("searching face…")
+- 디버깅용 **전면/후면 전환 버튼** (Measuring 화면 우상단)
+- ⚠️ TODO: 전면 카메라 미러링 시 박스 x좌표 보정 미적용 / 얼굴 모델 학습 시 정규화·RGB순서 최종 확인
 
 ---
 
 ### 시나리오 2: Blind Date (대면 단둘 대화)
 
 **상황**: 블라인드 데이트, 연인 간 유도심문, "솔직히 말해봐" 추궁
-**모델**: Voice + PPG
-**추론 방식**: 발화 단위 (VAD 기반 자동 분절)
+**모델**: Voice + PPG (model_1, mel + ppg_features(16) + ppg_signal(256))
+**추론 방식**: 5초 슬라이딩 윈도우, 2.5초마다 추론 (학습 윈도우와 동일)
 **입력**:
-- **음성**: 폰 마이크로 상대 음성 녹음
-- **PPG**: 상대 손가락을 후면 카메라+플래시에 올림 → RGB 변화로 PPG 추출
+- **음성**: 폰 마이크 → 최근 5초 → mel(128×96)
+- **PPG**: 상대 손가락을 후면 카메라+플래시에 올림 → red 채널 신호 → ppg_signal/features + BPM
 
 **유저 플로우**:
 1. 앱 실행 → 홈에서 "Blind Date" 선택
 2. 마이크 + 카메라 권한 요청
 3. "상대에게 손가락을 카메라에 대달라고 요청하세요" 안내
-4. PPG 잠금 확인 (BPM 안정화 대기) + 평상시 baseline 캘리브레이션 (편한 질문 3개)
-5. 본격 측정 시작 → 발화 단위로 결과 카드 누적
-6. 종료 → 질문-답변별 결과 리스트 리포트
+4. PPG 잠금 확인 (BPM 안정화 대기)
+5. 본격 측정 시작 → 2.5초마다 결과 카드 누적
+6. 종료 → 결과 리스트 + heatmap 리포트
 
-**왜 손가락 PPG인가**:
-- 대면 상황에서 카메라로 상대 얼굴을 정면에서 계속 찍는 건 부자연스러움
-- 손가락 PPG는 "재미있는 인터랙션 요소" (게임처럼 손가락을 대라고 요청)
-- Voice+PPG 모델의 두 입력을 자연스럽게 확보
+**BPM 산출 (현재 구현, `PPGbetterWithVoice` 방식 이식)**:
+- EMA 평활 → 3-point local-max peak(최소 600ms 간격) → 최근 10초 interval **median** → `60000/median`
+- 실제 ms timestamp 기반이라 프레임레이트 가정 불필요(안정적)
+
+> ⚠️ **변경 이력**: baseline calibration 화면은 실제 동작이 없어 **제거됨**(Setup→PpgLock→Measuring).
+> 발화 단위(VAD) 추론도 검토했으나, 학습이 5초 윈도우/2.5초 stride이므로 **5초 슬라이딩 윈도우로 롤백**.
 
 ---
 
@@ -68,7 +82,7 @@
 > **단일 Activity(`MainActivity`, `@AndroidEntryPoint`) + Compose `NavHost`** 구조.
 > 각 화면은 `@Composable` 함수이고, 화면 상태는 `@HiltViewModel` ViewModel이 `StateFlow`로 보유한다.
 > Interview / Blind Date 의 다단계 화면은 **nested navigation graph**로 묶어 같은 ViewModel을 공유한다.
-> ML 추론은 모델(.tflite) 연동 전까지 stub이며, 추론 시도 시 `ModelManager`가 `ModelNotReadyException("Not ready!")`을 던져 UI에 "Not ready!" 배너로 표시된다.
+> ML 추론은 **TFLite 모델 5종 실제 연동 완료**. 마이크 mel은 학습과 동일한 전처리(2048/1024/dB/Slaney)로 생성하며, 모델 미로드 시에만 안내 배너를 표시한다.
 
 ### 전체 네비게이션 다이어그램
 
@@ -80,8 +94,8 @@ Home  (시나리오 선택: 2개 카드 + 지난 기록)
    │      Setup → Measuring → Processing ─┐
    │                                       │
    ├─▶ blinddate_graph (nested, BlindDateViewModel 공유)
-   │      Setup → PpgLock → Calibration    ├─▶ Result/{sessionId} → (다시 시작 / 홈)
-   │             → Measuring → Processing ─┘
+   │      Setup → PpgLock → Measuring       ├─▶ Result/{sessionId} → (다시 시작 / 홈)
+   │             → Processing ──────────────┘
    │
    └─▶ History → Result/{sessionId}
 ```
@@ -123,12 +137,11 @@ Home  (시나리오 선택: 2개 카드 + 지난 기록)
 - TODO(permission): 실제 권한 요청 후 버튼 활성화
 
 #### 3-2 `InterviewMeasuringScreen`
-- 상단: 카메라 프리뷰 placeholder (`[ 카메라 프리뷰 ]` Surface)
-- 실시간 게이지: 거짓 확률 / 표면 감정 / BPM / 얼굴-음성 불일치
-- 모델 미연동 시 "Not ready!" 배너 노출
+- 상단: **CameraX 실시간 프리뷰 + ML Kit 얼굴 박스 오버레이**, "face detected / searching face…" 상태, 전면/후면 전환 버튼
+- 실시간 게이지: Deception probability(big) / **Face emotion + Voice emotion 2줄** / Face–Voice mismatch
 - 하단: "종료"(빨강) → Processing
-- `LaunchedEffect`에서 `viewModel.startMeasuring()` 호출
-- TODO: CameraX 프리뷰+FaceMesh, 마이크, 5초 윈도우 `inferFusion`
+- `viewModel.onCameraFrame`이 ML Kit 비동기 검출(`manageImageClose=false`) → faceImage/faceBox 갱신
+- 2.5초마다 `inferInterview(mel, faceImage)` → model_2(얼굴) + voice-only emotion/veracity
 
 #### 3-3 `InterviewProcessingScreen`
 - ProgressBar + "결과 분석 중..."
@@ -138,28 +151,22 @@ Home  (시나리오 선택: 2개 카드 + 지난 기록)
 
 ### 화면 그룹 4: Blind Date (시나리오 2) — `blinddate_graph`
 
-Voice+PPG 모델 기반 발화 단위 분석. 5개 화면이 `BlindDateViewModel` 공유.
+Voice+PPG 모델 기반 분석. **4개 화면**(calibration 제거)이 `BlindDateViewModel` 공유.
 
 #### 4-1 `BlindDateSetupScreen`
-- RECORD_AUDIO / CAMERA(후면+플래시) 권한 안내 → "다음"
+- RECORD_AUDIO / CAMERA(후면+플래시) 권한 요청(실제 런타임 권한) → "다음"
 
 #### 4-2 `BlindDatePpgLockScreen`
-- "상대에게 손가락을 카메라에 대달라" 안내
-- `viewModel.lockPpg()` (현재 즉시 성공 stub) → "✓ PPG 잠금 완료, BPM: 72" → "다음"
-- TODO(ppg): Camera2 + 플래시, RGB 신호 안정화 감지
+- "상대에게 손가락을 카메라에 대달라" 안내 + CameraX 프리뷰(torch ON)
+- `FingerPpgProcessor`가 red 채널 분석 → 잠금 판정 + BPM 표시 → "다음"(Measuring)
+- 자동 잠금 실패 시 "Lock anyway" 수동 fallback
 
-#### 4-3 `BlindDateCalibrationScreen`
-- baseline 질문 3개(`CALIBRATION_QUESTIONS`) 순차 표시
-- 각 질문 후 `nextCalibrationQuestion()`, 마지막엔 "측정 시작" → Measuring
-- TODO(calibration): 답변 시 음성+PPG baseline 수집
+#### 4-3 `BlindDateMeasuringScreen`
+- 상단: 현재 BPM(median 기반) + CameraX 프리뷰(손가락)
+- 결과 카드 리스트: "Answer #N — fake/genuine N% / 감정 top2"
+- 2.5초마다 `inferVoicePpg(mel, ppg_features, ppg_signal)` → 카드 추가, 하단 "종료" → Processing
 
-#### 4-4 `BlindDateMeasuringScreen`
-- 상단: 현재 BPM
-- 발화 카드 리스트(`LazyColumn`): "답변 #N — 진짜 89% / BPM ..."
-- "Not ready!" 배너, 하단 "종료" → Processing
-- TODO(vad): VAD 발화 분절 → 발화마다 `inferVoicePpg` → 카드 추가
-
-#### 4-5 `BlindDateProcessingScreen`
+#### 4-4 `BlindDateProcessingScreen`
 - ProgressBar → `stopMeasuring` → `Result/{sessionId}`
 
 ---
@@ -168,10 +175,11 @@ Voice+PPG 모델 기반 발화 단위 분석. 5개 화면이 `BlindDateViewModel
 
 **역할**: 두 시나리오의 최종 결과 표시. `ResultViewModel`이 sessionId로 세션 로드.
 
-- 세션 요약 (모드 / 세그먼트 수 / 평균 거짓 확률)
-- 세그먼트별 상세 리스트(`LazyColumn`) — 모델 미연동 시 "기록된 세그먼트가 없습니다"
-- 하단 버튼: "다시 시작"(이전 흐름으로 popBackStack) / "홈으로"
-- TODO(chart): 타임라인 히트맵(시간×감정×거짓확률) 렌더링
+- 세션 요약: 모드 pill + 세그먼트 수, **Avg deception score**(그라데이션 카드) + Fake segments N/M
+- **Dominant emotion**(큰 라벨 + "in N / M segments") + **Emotion spread**(상위 3개 막대그래프)
+- **Emotion Timeline Heatmap**: 행=8감정, 열=세그먼트(슬라이딩 윈도우). 셀 색 = 그 윈도우에서 감정 우세 순위(1등 진한 teal / 2등 중간 / 나머지 회색). **가로 스크롤**(셀 폭 고정) + 최신 자동스크롤
+- 세그먼트별 상세 리스트
+- 하단 버튼: "다시 시작" / "홈으로"
 
 ---
 
@@ -228,35 +236,31 @@ data class InferenceResult(
 > ViewModel(`@HiltViewModel`)이 이들을 주입받고, Activity(`@AndroidEntryPoint`)·Composable(`hiltViewModel()`)을 통해 연결된다.
 > 인터페이스(예: `SessionRepository`)는 `di/AppModule`의 `@Binds`로 구현체와 묶는다.
 
-### `ModelManager` (`@Singleton`, `@Inject constructor`)
-- TFLite 인터프리터 보유 예정 (Voice+PPG 모델, Fusion 모델)
-- `inferVoicePpg(audioFeatures, ppgFeatures): InferenceOutput`
-- `inferFusion(audioFeatures, faceFeatures, ppgFeatures): InferenceOutput`
-- **현재 stub**: `isReady = false`, 추론 메서드는 `ModelNotReadyException("Not ready!")`을 던짐. `.tflite` 연동 시 `loadModels()`/추론 구현을 채운다.
+### `ModelManager` (`@Singleton`, `@Inject constructor`) — **구현 완료**
+- TFLite 인터프리터 5종 보유 (CPU, XNNPACK off — 호환성 우선):
+  - `model_1_emotion` / `model_1_veracity` (Voice+PPG, 입력: mel/ppg_features/ppg_signal)
+  - `model_1_voice_only_emotion` / `_veracity` (mel만)
+  - `model_2_face_emotion` (96×96×3, 0~255)
+- `inferVoicePpg(VoicePpgInput)` — 시나리오 2
+- `inferInterview(InterviewInput)` — 시나리오 1 (얼굴+음성 emotion 둘 다, Face–Voice mismatch)
+- 출력 `InferenceOutput`: emotion/topEmotions/**emotionDistribution(8클래스 전체)**/fakeProbability/voiceEmotion/faceVoiceDiscordance
+- veracity 매핑: index 0=true, 1=fake → `fakeProbability = scores[1]`
 
-### `AudioFeatureExtractor`
-- 원본 PCM → MFCC, Pitch, Energy, Jitter, Shimmer 추출
-- TarsosDSP 또는 자체 구현
+### `AudioFeatureExtractor` — **구현 완료 (학습 정합)**
+- 마이크 16k → 최근 5초 → **librosa 동등 log-mel(128×96)**: n_fft=2048, hop=1024, hann(center=reflect), Slaney mel(area-norm), `power_to_db(ref=max)`, 시간축 96 보간, per-window z-score
+- **radix-2 FFT**로 실시간화(naive DFT는 오디오 스레드 블로킹 → 윈도우 안 뜸). numpy와 1e-13 일치 검증
 
-### `PpgExtractor` (rPPG)
-- **rPPG 방식** — 별도 센서 없이 카메라 프레임의 ROI 색 변화로 심박을 추출 (참고: `PPGbetterwithvoice` 프로젝트)
-- 입력: `ImageReader`(YUV_420_888) 프레임의 ROI 픽셀 평균값 → 시간축 1D 신호
-  - 시나리오 1: 얼굴 프레임의 **뺨 ROI** 평균 (플래시 불필요)
-  - 시나리오 2: 후면 **플래시 ON**, **손가락 ROI** 평균
-- 신호 처리: EMA 평활 → bandpass filter → 피크 검출(또는 FFT) → BPM, HRV
-- 참고 구현의 핵심 흐름: 프레임 평균 → EMA → 3-포인트 로컬 피크 → 피크 간격 중앙값 → BPM(45~180 클램프)
+### `FingerPpgProcessor` (시나리오 2, rPPG) — **구현 완료**
+- 후면 플래시 ON, 손가락 ROI red 채널 → ppg_signal(256)/ppg_features(16)
+- BPM: EMA → 3-point peak(≥600ms) → 최근 10초 interval median → `60000/median` (`PPGbetterWithVoice` 이식)
 
-### `VadProcessor`
-- WebRTC VAD 또는 silero-vad TFLite
-- 발화 시작/종료 콜백
+### `InterviewCameraProcessor` (시나리오 1) — **구현 완료**
+- **ML Kit Face Detection**(FAST) → 가장 큰 얼굴 박스(+18% 여백) → 96×96 크롭, **0~255 float32**
+- 박스를 정규화 좌표로 UI에 전달(오버레이). 회전(rotationDegrees) 보정 포함. 비동기(`analyze(image, onReading)`)
 
-### `CameraFrameAnalyzer` (시나리오 1 전용)
-- CameraX ImageAnalysis로 후면 카메라 프레임 수집
-- 프레임 → MediaPipe Face Mesh(랜드마크) + 뺨 ROI(PPG) 동시 처리
-
-### `FaceMeshExtractor`
-- MediaPipe Tasks Android (Face Landmarker)
-- 캡처된 프레임 → 468개 3D 랜드마크 → 1404차원 벡터
+### (미사용/대체됨)
+- ~~VadProcessor~~ — 5초 윈도우 채택으로 미사용 (`RealtimeAudioEngine`에 `pollCompletedUtterance` 구현은 존재)
+- ~~MediaPipe FaceMesh~~ — ML Kit Face Detection으로 대체 (랜드마크 불필요, 박스만 사용)
 
 ---
 
@@ -279,8 +283,7 @@ data class InferenceResult(
 | InterviewMeasuringScreen | `interview/measuring` | 종료 → Processing |
 | InterviewProcessingScreen | `interview/processing` | `stopMeasuring` 완료 → `result/{sessionId}` |
 | BlindDateSetupScreen | `blinddate/setup` | 다음 → PpgLock |
-| BlindDatePpgLockScreen | `blinddate/ppglock` | PPG 잠금 + 다음 → Calibration |
-| BlindDateCalibrationScreen | `blinddate/calibration` | 3개 질문 완료 → Measuring |
+| BlindDatePpgLockScreen | `blinddate/ppglock` | PPG 잠금 + 다음 → Measuring |
 | BlindDateMeasuringScreen | `blinddate/measuring` | 종료 → Processing |
 | BlindDateProcessingScreen | `blinddate/processing` | `stopMeasuring` 완료 → `result/{sessionId}` |
 | ResultScreen | `result/{sessionId}` | "다시 시작" → 이전 흐름 / "홈으로" → Home |
