@@ -13,7 +13,6 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.example.mca_project.ui.blinddate.BlindDateCalibrationScreen
 import com.example.mca_project.ui.blinddate.BlindDateMeasuringScreen
 import com.example.mca_project.ui.blinddate.BlindDatePpgLockScreen
 import com.example.mca_project.ui.blinddate.BlindDateProcessingScreen
@@ -130,11 +129,7 @@ private fun NavGraphBuilder.blindDateGraph(navController: NavHostController) {
         }
         composable(Routes.BLIND_DATE_PPG_LOCK) { entry ->
             val vm = entry.sharedViewModel<BlindDateViewModel>(navController, BLIND_DATE_GRAPH)
-            BlindDatePpgLockScreen(vm, onNext = { navController.navigate(Routes.BLIND_DATE_CALIBRATION) })
-        }
-        composable(Routes.BLIND_DATE_CALIBRATION) { entry ->
-            val vm = entry.sharedViewModel<BlindDateViewModel>(navController, BLIND_DATE_GRAPH)
-            BlindDateCalibrationScreen(vm, onDone = { navController.navigate(Routes.BLIND_DATE_MEASURING) })
+            BlindDatePpgLockScreen(vm, onNext = { navController.navigate(Routes.BLIND_DATE_MEASURING) })
         }
         composable(Routes.BLIND_DATE_MEASURING) { entry ->
             val vm = entry.sharedViewModel<BlindDateViewModel>(navController, BLIND_DATE_GRAPH)

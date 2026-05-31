@@ -25,13 +25,6 @@ import java.util.UUID
 import java.util.concurrent.ExecutorService
 import javax.inject.Inject
 
-/** 캘리브레이션 단계에서 사용할 가벼운 질문들 */
-val CALIBRATION_QUESTIONS = listOf(
-    "오늘 점심 뭐 드셨어요?",
-    "최근 본 영화 있어요?",
-    "주말에 뭐 하셨어요?",
-)
-
 data class UtteranceCard(
     val index: Int,
     val inference: InferenceOutput,
@@ -40,7 +33,6 @@ data class UtteranceCard(
 data class BlindDateUiState(
     val ppgLocked: Boolean = false,
     val lockedBpm: Float? = null,
-    val calibrationIndex: Int = 0,
     val isMeasuring: Boolean = false,
     val cards: List<UtteranceCard> = emptyList(),
     val notReadyMessage: String? = null,
@@ -96,11 +88,6 @@ class BlindDateViewModel @Inject constructor(
         _uiState.update { it.copy(ppgLocked = true, lockedBpm = bpm) }
     }
 
-    fun nextCalibrationQuestion() {
-        _uiState.update { it.copy(calibrationIndex = it.calibrationIndex + 1) }
-        // TODO(calibration): 각 질문 답변 시 음성+PPG baseline 수집
-    }
-
     fun startMeasuring() {
         if (_uiState.value.isMeasuring) return
         fingerPpgProcessor.reset()
@@ -117,6 +104,7 @@ class BlindDateViewModel @Inject constructor(
             )
         }
         measuringJob?.cancel()
+        // 학습이 5초 윈도우/2.5초 stride였으므로 추론도 동일하게 롤링 5초 윈도우 + 2.5초 주기로 한다.
         measuringJob = viewModelScope.launch {
             delay(900)
             while (isActive && _uiState.value.isMeasuring) {

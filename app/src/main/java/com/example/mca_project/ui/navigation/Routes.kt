@@ -5,8 +5,8 @@ package com.example.mca_project.ui.navigation
  * 설계문서의 Activity/Fragment 구조를 Compose 단일 NavHost의 route로 매핑한다.
  *
  *  Splash → Home ┬→ Interview(Setup→Measuring→Processing) ┐
- *                └→ BlindDate(Setup→PpgLock→Calibration    ├→ Result → (재시작/홈)
- *                              →Measuring→Processing)       ┘
+ *                └→ BlindDate(Setup→PpgLock→Measuring      ├→ Result → (재시작/홈)
+ *                              →Processing)                 ┘
  *                └→ History → Result
  */
 object Routes {
@@ -21,7 +21,6 @@ object Routes {
     // 시나리오 2: Blind Date (Voice + PPG)
     const val BLIND_DATE_SETUP = "blinddate/setup"
     const val BLIND_DATE_PPG_LOCK = "blinddate/ppglock"
-    const val BLIND_DATE_CALIBRATION = "blinddate/calibration"
     const val BLIND_DATE_MEASURING = "blinddate/measuring"
     const val BLIND_DATE_PROCESSING = "blinddate/processing"
 

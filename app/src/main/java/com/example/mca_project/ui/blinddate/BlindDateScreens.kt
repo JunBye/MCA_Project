@@ -164,45 +164,6 @@ fun BlindDatePpgLockScreen(viewModel: BlindDateViewModel, onNext: () -> Unit) {
     }
 }
 
-/** 4-3 Calibration */
-@Composable
-fun BlindDateCalibrationScreen(viewModel: BlindDateViewModel, onDone: () -> Unit) {
-    val c = EdTheme.colors
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val index = state.calibrationIndex
-    if (index >= CALIBRATION_QUESTIONS.size) {
-        LaunchedEffect(Unit) { onDone() }
-        return
-    }
-    val last = index == CALIBRATION_QUESTIONS.lastIndex
-    Screen(footer = {
-        EdButton(if (last) "Start measuring" else "Next question", { viewModel.nextCalibrationQuestion() }, icon = if (last) "activity" else "arrow-right")
-    }) {
-        AppHeader("Baseline calibration", step = "Measurement ${index + 1} / ${CALIBRATION_QUESTIONS.size}")
-        Text(
-            "Ask a neutral question to establish their honest baseline.",
-            color = c.textDim, fontFamily = EdType.sans, fontSize = 14.5.sp, modifier = Modifier.padding(horizontal = 2.dp).padding(bottom = 24.dp),
-        )
-        // 진행 바
-        Row(Modifier.fillMaxWidth().padding(bottom = 22.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            CALIBRATION_QUESTIONS.indices.forEach { j ->
-                Box(Modifier.weight(1f).height(5.dp).clip(RoundedCornerShape(3.dp)).background(if (j <= index) c.primary else c.track))
-            }
-        }
-        EdCard {
-            Column(Modifier.padding(horizontal = 24.dp, vertical = 30.dp)) {
-                Text("“", color = c.primary.copy(alpha = 0.35f), fontFamily = EdType.sans, fontSize = 52.sp)
-                Text(CALIBRATION_QUESTIONS[index], color = c.text, fontFamily = EdType.sans, fontSize = 23.sp, fontWeight = FontWeight.SemiBold)
-                Row(Modifier.padding(top = 22.dp), verticalAlignment = Alignment.CenterVertically) {
-                    HeartBeat(bpm = state.lockedBpm?.toInt() ?: 72, size = 18, color = c.genuine)
-                    Spacer(Modifier.width(8.dp))
-                    Text("baseline BPM ${state.lockedBpm?.toInt() ?: 72} · voice nominal", color = c.textFaint, fontFamily = EdType.mono, fontSize = 12.5.sp)
-                }
-            }
-        }
-    }
-}
-
 /** 4-4 Measuring */
 @Composable
 fun BlindDateMeasuringScreen(viewModel: BlindDateViewModel, onStop: () -> Unit) {
