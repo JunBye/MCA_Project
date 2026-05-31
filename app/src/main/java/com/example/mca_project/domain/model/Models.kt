@@ -24,9 +24,14 @@ data class InferenceOutput(
     val emotion: String,
     val emotionConfidence: Float,
     val topEmotions: List<EmotionScore> = emptyList(),
+    // 8클래스 전체 확률 분포 (확률순 아님, EmotionCatalog 순서). heatmap 등 전체 분포가 필요한 곳에서 사용.
+    val emotionDistribution: List<EmotionScore> = emptyList(),
     val fakeProbability: Float,
     val bpm: Float? = null,
     val faceVoiceDiscordance: Float? = null, // 시나리오 1(융합)만
+    // 시나리오 1(Job Interview)에서 음성 모델이 읽은 감정. face emotion(=emotion)과 함께 표시.
+    val voiceEmotion: String? = null,
+    val voiceEmotionConfidence: Float? = null,
 )
 
 /** 측정 세션 1건 */

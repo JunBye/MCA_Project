@@ -86,6 +86,7 @@ class ModelManager @Inject constructor(
             emotion = topEmotions.first().label,
             emotionConfidence = topEmotions.first().probability,
             topEmotions = topEmotions.take(2),
+            emotionDistribution = toDistribution(emotionScores, EmotionCatalog.voicePpg),
             fakeProbability = fakeProbability.coerceIn(0f, 1f),
             bpm = input.bpmHint ?: estimateBpm(input.ppgSignal),
         )
@@ -101,6 +102,7 @@ class ModelManager @Inject constructor(
         val faceScores = runFaceEmotion(input.faceImage)
         val faceTop = toEmotionScores(faceScores, EmotionCatalog.face)
         val voiceScores = runVoiceOnlyEmotion(VoiceOnlyInput(input.mel))
+        val voiceTop = toEmotionScores(voiceScores, EmotionCatalog.canonical)
         val veracityScores = runVoiceOnlyVeracity(VoiceOnlyInput(input.mel))
         val fakeProbability = veracityScores.getOrElse(1) { 1f - veracityScores[0] }
 
@@ -108,11 +110,14 @@ class ModelManager @Inject constructor(
             emotion = faceTop.first().label,
             emotionConfidence = faceTop.first().probability,
             topEmotions = faceTop.take(2),
+            emotionDistribution = toDistribution(faceScores, EmotionCatalog.face),
             fakeProbability = fakeProbability.coerceIn(0f, 1f),
             faceVoiceDiscordance = cosineDistance(
                 projectToHeatmap(faceScores, EmotionCatalog.face),
                 projectToHeatmap(voiceScores, EmotionCatalog.canonical),
             ),
+            voiceEmotion = voiceTop.first().label,
+            voiceEmotionConfidence = voiceTop.first().probability,
         )
     }
 
@@ -270,6 +275,11 @@ class ModelManager @Inject constructor(
         return probabilities
             .mapIndexed { index, probability -> EmotionScore(labels[index], probability) }
             .sortedByDescending { it.probability }
+    }
+
+    /** 라벨 순서(EmotionCatalog 순) 그대로의 전체 확률 분포. heatmap 등 전체 분포가 필요한 곳에서 사용. */
+    private fun toDistribution(probabilities: FloatArray, labels: List<String>): List<EmotionScore> {
+        return probabilities.mapIndexed { index, probability -> EmotionScore(labels[index], probability) }
     }
 
     private fun projectToHeatmap(probabilities: FloatArray, labels: List<String>): FloatArray {
