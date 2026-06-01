@@ -1,0 +1,69 @@
+{
+  "generated_at": "2026-06-01 18:44:38",
+  "source_root": "/home/choi/mca/project",
+  "project_root": "/mnt/c/Users/SAMSUNG/AndroidStudioProjects/MCA_Project",
+  "models": [
+    {
+      "artifact_name": "model_2_face_emotion",
+      "optimized_tflite_path": "/mnt/c/Users/SAMSUNG/AndroidStudioProjects/MCA_Project/artifacts/model_optimization/20260601_184434/optimized_tflite/model_2_face_emotion_int8_sparse.tflite",
+      "baseline_tflite_path": "/mnt/c/Users/SAMSUNG/AndroidStudioProjects/MCA_Project/app/src/main/assets/model_2_face_emotion_float16.tflite",
+      "checkpoint_path": "/home/choi/mca/project/outputs/face_model/best_model.keras",
+      "class_names": [
+        "Anger",
+        "Contempt",
+        "Disgust",
+        "Fear",
+        "Happy",
+        "Neutral",
+        "Sad",
+        "Surprise"
+      ],
+      "pruning": {
+        "target_sparsity": 0.35,
+        "actual_sparsity": 0.3500002787192294,
+        "prunable_tensors": 47
+      },
+      "sizes": {
+        "baseline_bytes": 1528412,
+        "baseline_mb": 1.458,
+        "optimized_bytes": 1380176,
+        "optimized_mb": 1.316,
+        "reduction_percent": 9.7
+      },
+      "memory": {
+        "baseline": {
+          "baseline_rss_mb": 644.359,
+          "peak_rss_mb": 653.496,
+          "peak_delta_mb": 9.137
+        },
+        "optimized": {
+          "baseline_rss_mb": 645.223,
+          "peak_rss_mb": 653.234,
+          "peak_delta_mb": 8.012
+        }
+      },
+      "accuracy": {
+        "train": {
+          "baseline": {
+            "accuracy": 0.875,
+            "top2_accuracy": 0.96875
+          },
+          "optimized": {
+            "accuracy": 0.21875,
+            "top2_accuracy": 0.53125
+          }
+        },
+        "test": {
+          "baseline": {
+            "accuracy": 0.8125,
+            "top2_accuracy": 0.875
+          },
+          "optimized": {
+            "accuracy": 0.25,
+            "top2_accuracy": 0.5
+          }
+        }
+      }
+    }
+  ]
+}

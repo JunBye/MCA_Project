@@ -1,0 +1,75 @@
+{
+  "generated_at": "2026-06-01 21:54:04",
+  "source_root": "/home/choi/mca/project",
+  "project_root": "/mnt/c/Users/SAMSUNG/AndroidStudioProjects/MCA_Project",
+  "models": [
+    {
+      "artifact_name": "model_2_face_emotion",
+      "optimized_tflite_path": "/mnt/c/Users/SAMSUNG/AndroidStudioProjects/MCA_Project/artifacts/model_optimization/20260601_215358/optimized_tflite/model_2_face_emotion_int8_sparse_qonly.tflite",
+      "baseline_tflite_path": "/mnt/c/Users/SAMSUNG/AndroidStudioProjects/MCA_Project/app/src/main/assets/model_2_face_emotion_float16.tflite",
+      "checkpoint_path": "/home/choi/mca/project/outputs/face_model/best_model.keras",
+      "class_names": [
+        "Anger",
+        "Contempt",
+        "Disgust",
+        "Fear",
+        "Happy",
+        "Neutral",
+        "Sad",
+        "Surprise"
+      ],
+      "pruning": {
+        "target_sparsity": 0.0,
+        "actual_sparsity": 0.0,
+        "prunable_tensors": 0
+      },
+      "experiment": {
+        "disable_pruning": true,
+        "quantization_mode": "int8",
+        "finetune_epochs": 3,
+        "learning_rate": 5e-05
+      },
+      "sizes": {
+        "baseline_bytes": 1528412,
+        "baseline_mb": 1.458,
+        "optimized_bytes": 1004232,
+        "optimized_mb": 0.958,
+        "reduction_percent": 34.3
+      },
+      "memory": {
+        "baseline": {
+          "baseline_rss_mb": 644.223,
+          "peak_rss_mb": 653.699,
+          "peak_delta_mb": 9.477
+        },
+        "optimized": {
+          "baseline_rss_mb": 644.734,
+          "peak_rss_mb": 650.836,
+          "peak_delta_mb": 6.102
+        }
+      },
+      "accuracy": {
+        "train": {
+          "baseline": {
+            "accuracy": 0.7754517279691246,
+            "top2_accuracy": 0.9269048593649494
+          },
+          "optimized": {
+            "accuracy": 0.38880767206596106,
+            "top2_accuracy": 0.60399976609555
+          }
+        },
+        "test": {
+          "baseline": {
+            "accuracy": 0.6784029038112522,
+            "top2_accuracy": 0.8609800362976406
+          },
+          "optimized": {
+            "accuracy": 0.3822141560798548,
+            "top2_accuracy": 0.5851179673321234
+          }
+        }
+      }
+    }
+  ]
+}

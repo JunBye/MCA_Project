@@ -1,176 +1,281 @@
 {
-  "quantization": "float16",
+  "generated_at": "2026-06-01 19:11:53",
+  "optimization_method": "one-shot global magnitude pruning with masked fine-tuning, followed by post-training int8 quantization with TensorFlow Lite experimental sparsity and float32 input/output tensors",
+  "accuracy_selection_basis": "deployment decisions use test-set accuracy as the primary criterion; train-set accuracy is logged as a secondary regression signal",
+  "promotion_rule": "Promote optimized model only when the measured absolute test accuracy drop is <= 0.03 and the optimized asset still matches the app's current input/output contract.",
+  "packaged_assets_total_mb": {
+    "baseline_reference": 9.987,
+    "deployed_after_optimization": 7.588,
+    "reduction_percent": 24.02
+  },
   "artifacts": [
     {
       "artifact_name": "model_1_emotion",
-      "source_checkpoint": "outputs/model_1_tf_v2/best_model.keras",
-      "tflite_path": "app/src/main/assets/model_1_emotion_float16.tflite",
+      "source_checkpoint": "outputs/voice_ppg_emotion/best_model.keras",
+      "deployed_tflite_path": "app/src/main/assets/model_1_emotion_float16.tflite",
+      "candidate_optimized_tflite_path": "artifacts/model_optimization/20260601_185458/optimized_tflite/model_1_emotion_int8_sparse.tflite",
+      "deployment_status": "baseline_retained",
+      "reason": "optimized model reduced size and peak memory, but test accuracy regressed too much",
       "inputs": [
         {
           "name": "mel",
-          "shape": [
-            null,
-            128,
-            96,
-            1
-          ],
+          "shape": [null, 128, 96, 1],
           "dtype": "float32"
         },
         {
           "name": "ppg_features",
-          "shape": [
-            null,
-            16
-          ],
+          "shape": [null, 16],
           "dtype": "float32"
         },
         {
           "name": "ppg_signal",
-          "shape": [
-            null,
-            256,
-            1
-          ],
+          "shape": [null, 256, 1],
           "dtype": "float32"
         }
       ],
       "outputs": [
         {
           "name": "emotion",
-          "shape": [
-            null,
-            8
-          ],
+          "shape": [null, 8],
           "dtype": "float32"
         }
       ],
-      "normalization_path": "app/src/main/assets/model_1_ppg_normalization.npz"
+      "normalization_path": "app/src/main/assets/model_1_ppg_normalization.npz",
+      "benchmark": {
+        "size_mb": {
+          "baseline": 2.372,
+          "optimized": 1.313,
+          "reduction_percent": 44.66
+        },
+        "peak_rss_delta_mb": {
+          "baseline": 16.879,
+          "optimized": 11.398
+        },
+        "train_accuracy": {
+          "baseline": 0.3371,
+          "optimized": 0.1563
+        },
+        "train_top2_accuracy": {
+          "baseline": 0.5871,
+          "optimized": 0.2946
+        },
+        "test_accuracy": {
+          "baseline": 0.3333,
+          "optimized": 0.1395
+        },
+        "test_top2_accuracy": {
+          "baseline": 0.5736,
+          "optimized": 0.2558
+        },
+        "sparsity": {
+          "target": 0.4,
+          "actual": 0.4
+        }
+      }
     },
     {
       "artifact_name": "model_1_veracity",
-      "source_checkpoint": "outputs/model_1_tf_v2/best_model.keras",
-      "tflite_path": "app/src/main/assets/model_1_veracity_float16.tflite",
+      "source_checkpoint": "outputs/voice_ppg_veracity/best_model.keras",
+      "deployed_tflite_path": "app/src/main/assets/model_1_veracity_int8_sparse.tflite",
+      "candidate_optimized_tflite_path": "artifacts/model_optimization/20260601_185717/optimized_tflite/model_1_veracity_int8_sparse.tflite",
+      "deployment_status": "optimized_promoted",
       "inputs": [
         {
           "name": "mel",
-          "shape": [
-            null,
-            128,
-            96,
-            1
-          ],
+          "shape": [null, 128, 96, 1],
           "dtype": "float32"
         },
         {
           "name": "ppg_features",
-          "shape": [
-            null,
-            16
-          ],
+          "shape": [null, 16],
           "dtype": "float32"
         },
         {
           "name": "ppg_signal",
-          "shape": [
-            null,
-            256,
-            1
-          ],
+          "shape": [null, 256, 1],
           "dtype": "float32"
         }
       ],
       "outputs": [
         {
           "name": "veracity",
-          "shape": [
-            null,
-            2
-          ],
+          "shape": [null, 2],
           "dtype": "float32"
         }
       ],
-      "normalization_path": "app/src/main/assets/model_1_ppg_normalization.npz"
+      "normalization_path": "app/src/main/assets/model_1_ppg_normalization.npz",
+      "benchmark": {
+        "size_mb": {
+          "baseline": 2.371,
+          "optimized": 1.458,
+          "reduction_percent": 38.5
+        },
+        "peak_rss_delta_mb": {
+          "baseline": 17.109,
+          "optimized": 11.25
+        },
+        "train_accuracy": {
+          "baseline": 0.5596,
+          "optimized": 0.5367
+        },
+        "test_accuracy": {
+          "baseline": 0.4865,
+          "optimized": 0.4685
+        },
+        "sparsity": {
+          "target": 0.25,
+          "actual": 0.25
+        }
+      }
     },
     {
-      "artifact_name": "model_1_voice_only_emotion",
-      "source_checkpoint": "outputs/voice_only_emotion/best_model.keras",
-      "tflite_path": "app/src/main/assets/model_1_voice_only_emotion_float16.tflite",
+      "artifact_name": "model_1_voice_only_emotion_sensitive",
+      "source_checkpoint": "outputs_sensitive/voice_only_emotion/best_model.keras",
+      "deployed_tflite_path": "app/src/main/assets/model_1_voice_only_emotion_sensitive_int8_sparse.tflite",
+      "candidate_optimized_tflite_path": "artifacts/model_optimization/20260601_190002/optimized_tflite/model_1_voice_only_emotion_sensitive_int8_sparse.tflite",
+      "deployment_status": "optimized_promoted",
       "inputs": [
         {
           "name": "mel",
-          "shape": [
-            null,
-            128,
-            96,
-            1
-          ],
-          "dtype": "float32"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "keras_tensor_81",
-          "shape": [
-            null,
-            8
-          ],
-          "dtype": "float32"
-        }
-      ]
-    },
-    {
-      "artifact_name": "model_1_voice_only_veracity",
-      "source_checkpoint": "outputs/voice_only_veracity/best_model.keras",
-      "tflite_path": "app/src/main/assets/model_1_voice_only_veracity_float16.tflite",
-      "inputs": [
-        {
-          "name": "mel",
-          "shape": [
-            null,
-            128,
-            96,
-            1
-          ],
-          "dtype": "float32"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "keras_tensor_163",
-          "shape": [
-            null,
-            2
-          ],
-          "dtype": "float32"
-        }
-      ]
-    },
-    {
-      "artifact_name": "model_2_face_emotion",
-      "source_checkpoint": "outputs/model_2_reg/best_model.keras",
-      "tflite_path": "app/src/main/assets/model_2_face_emotion_float16.tflite",
-      "inputs": [
-        {
-          "name": "image",
-          "shape": [
-            null,
-            96,
-            96,
-            3
-          ],
+          "shape": [null, 128, 96, 1],
           "dtype": "float32"
         }
       ],
       "outputs": [
         {
           "name": "emotion",
-          "shape": [
-            null,
-            8
-          ],
+          "shape": [null, 8],
           "dtype": "float32"
         }
-      ]
+      ],
+      "benchmark": {
+        "size_mb": {
+          "baseline": 1.94,
+          "optimized": 1.205,
+          "reduction_percent": 37.9
+        },
+        "peak_rss_delta_mb": {
+          "baseline": 24.609,
+          "optimized": 13.508
+        },
+        "train_accuracy": {
+          "baseline": 0.1317,
+          "optimized": 0.1272
+        },
+        "train_top2_accuracy": {
+          "baseline": 0.26,
+          "optimized": 0.2489
+        },
+        "test_accuracy": {
+          "baseline": 0.1473,
+          "optimized": 0.124
+        },
+        "test_top2_accuracy": {
+          "baseline": 0.2636,
+          "optimized": 0.2481
+        },
+        "sparsity": {
+          "target": 0.35,
+          "actual": 0.35
+        }
+      }
+    },
+    {
+      "artifact_name": "model_1_voice_only_veracity",
+      "source_checkpoint": "outputs/voice_only_veracity/best_model.keras",
+      "deployed_tflite_path": "app/src/main/assets/model_1_voice_only_veracity_int8_sparse.tflite",
+      "candidate_optimized_tflite_path": "artifacts/model_optimization/20260601_190305/optimized_tflite/model_1_voice_only_veracity_int8_sparse.tflite",
+      "deployment_status": "optimized_promoted",
+      "inputs": [
+        {
+          "name": "mel",
+          "shape": [null, 128, 96, 1],
+          "dtype": "float32"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "veracity",
+          "shape": [null, 2],
+          "dtype": "float32"
+        }
+      ],
+      "benchmark": {
+        "size_mb": {
+          "baseline": 1.846,
+          "optimized": 1.095,
+          "reduction_percent": 40.68
+        },
+        "peak_rss_delta_mb": {
+          "baseline": 15.625,
+          "optimized": 9.758
+        },
+        "train_accuracy": {
+          "baseline": 0.6862,
+          "optimized": 0.716
+        },
+        "test_accuracy": {
+          "baseline": 0.4955,
+          "optimized": 0.4955
+        },
+        "sparsity": {
+          "target": 0.25,
+          "actual": 0.25
+        }
+      }
+    },
+    {
+      "artifact_name": "model_2_face_emotion",
+      "source_checkpoint": "outputs/face_model/best_model.keras",
+      "deployed_tflite_path": "app/src/main/assets/model_2_face_emotion_float16.tflite",
+      "candidate_optimized_tflite_path": "artifacts/model_optimization/20260601_191150/optimized_tflite/model_2_face_emotion_int8_sparse.tflite",
+      "deployment_status": "baseline_retained",
+      "reason": "optimized model barely reduced size, but train/test accuracy regressed too much",
+      "inputs": [
+        {
+          "name": "image",
+          "shape": [null, 96, 96, 3],
+          "dtype": "float32"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "emotion",
+          "shape": [null, 8],
+          "dtype": "float32"
+        }
+      ],
+      "benchmark": {
+        "size_mb": {
+          "baseline": 1.458,
+          "optimized": 1.316,
+          "reduction_percent": 9.7
+        },
+        "peak_rss_delta_mb": {
+          "baseline": 9.473,
+          "optimized": 8.242
+        },
+        "train_accuracy": {
+          "baseline": 0.7755,
+          "optimized": 0.4535
+        },
+        "train_top2_accuracy": {
+          "baseline": 0.9269,
+          "optimized": 0.6849
+        },
+        "test_accuracy": {
+          "baseline": 0.6784,
+          "optimized": 0.4022
+        },
+        "test_top2_accuracy": {
+          "baseline": 0.861,
+          "optimized": 0.6352
+        },
+        "sparsity": {
+          "target": 0.35,
+          "actual": 0.35
+        }
+      }
     }
   ]
 }

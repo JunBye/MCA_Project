@@ -1,0 +1,69 @@
+{
+  "generated_at": "2026-06-01 19:11:53",
+  "source_root": "/home/choi/mca/project",
+  "project_root": "/mnt/c/Users/SAMSUNG/AndroidStudioProjects/MCA_Project",
+  "models": [
+    {
+      "artifact_name": "model_2_face_emotion",
+      "optimized_tflite_path": "/mnt/c/Users/SAMSUNG/AndroidStudioProjects/MCA_Project/artifacts/model_optimization/20260601_191150/optimized_tflite/model_2_face_emotion_int8_sparse.tflite",
+      "baseline_tflite_path": "/mnt/c/Users/SAMSUNG/AndroidStudioProjects/MCA_Project/app/src/main/assets/model_2_face_emotion_float16.tflite",
+      "checkpoint_path": "/home/choi/mca/project/outputs/face_model/best_model.keras",
+      "class_names": [
+        "Anger",
+        "Contempt",
+        "Disgust",
+        "Fear",
+        "Happy",
+        "Neutral",
+        "Sad",
+        "Surprise"
+      ],
+      "pruning": {
+        "target_sparsity": 0.35,
+        "actual_sparsity": 0.3500002787192294,
+        "prunable_tensors": 47
+      },
+      "sizes": {
+        "baseline_bytes": 1528412,
+        "baseline_mb": 1.458,
+        "optimized_bytes": 1380176,
+        "optimized_mb": 1.316,
+        "reduction_percent": 9.7
+      },
+      "memory": {
+        "baseline": {
+          "baseline_rss_mb": 644.367,
+          "peak_rss_mb": 653.84,
+          "peak_delta_mb": 9.473
+        },
+        "optimized": {
+          "baseline_rss_mb": 644.539,
+          "peak_rss_mb": 652.781,
+          "peak_delta_mb": 8.242
+        }
+      },
+      "accuracy": {
+        "train": {
+          "baseline": {
+            "accuracy": 0.7754517279691246,
+            "top2_accuracy": 0.9269048593649494
+          },
+          "optimized": {
+            "accuracy": 0.4534822524998538,
+            "top2_accuracy": 0.6849307058066779
+          }
+        },
+        "test": {
+          "baseline": {
+            "accuracy": 0.6784029038112522,
+            "top2_accuracy": 0.8609800362976406
+          },
+          "optimized": {
+            "accuracy": 0.40217785843920145,
+            "top2_accuracy": 0.6352087114337568
+          }
+        }
+      }
+    }
+  ]
+}

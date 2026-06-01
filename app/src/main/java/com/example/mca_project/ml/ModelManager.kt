@@ -474,9 +474,9 @@ class ModelManager @Inject constructor(
 
     companion object {
         private const val VOICE_PPG_EMOTION_MODEL = "model_1_emotion_float16.tflite"
-        private const val VOICE_PPG_VERACITY_MODEL = "model_1_veracity_float16.tflite"
+        private const val VOICE_PPG_VERACITY_MODEL = "model_1_veracity_int8_sparse.tflite"
         private const val VOICE_ONLY_EMOTION_MODEL = "model_1_voice_only_emotion_float16.tflite"
-        private const val VOICE_ONLY_VERACITY_MODEL = "model_1_voice_only_veracity_float16.tflite"
+        private const val VOICE_ONLY_VERACITY_MODEL = "model_1_voice_only_veracity_int8_sparse.tflite"
         private const val FACE_EMOTION_MODEL = "model_2_face_emotion_float16.tflite"
 
         private const val MEL_HEIGHT = 128
